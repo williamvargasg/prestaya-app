@@ -5,20 +5,17 @@ import {
   consolidateLoanState, 
   calcularMontoCuota,
   calcularTotalAPagar,
-  esDiaHabil,
-  obtenerFestivos
+  esDiaHabil
 } from '../../utils/loanUtils'
 
 const PrestamosManager = () => {
   const [prestamos, setPrestamos] = useState([])
   const [deudores, setDeudores] = useState([])
   const [cobradores, setCobradores] = useState([])
-
-
   const [form, setForm] = useState({
     deudor_id: '',
     cobrador_id: '',
-    fecha_inicio: '',
+    fecha_inicio: new Date().toISOString().split('T')[0], // Fecha actual por defecto
     monto: '',
     total_a_pagar: '',
     monto_cuota: '',
@@ -26,7 +23,6 @@ const PrestamosManager = () => {
   })
   const [editId, setEditId] = useState(null)
   const [errors, setErrors] = useState({})
-  const [cronogramaVisible, setCronogramaVisible] = useState(null)
 
   const fetchPrestamos = async () => {
     const { data, error } = await supabase
@@ -74,101 +70,26 @@ const PrestamosManager = () => {
     fetchPrestamos()
     fetchDeudores()
     fetchCobradores()
-    
-    // Inicializar fecha_inicio con fecha de Colombia
-    setForm(prev => ({
-      ...prev,
-      fecha_inicio: obtenerFechaColombiaHoy()
-    }))
   }, [])
-
-  // Obtener fecha actual en zona horaria de Colombia (UTC-5)
-  const obtenerFechaColombiaHoy = () => {
-    const ahora = new Date()
-    // Ajustar a zona horaria de Colombia (UTC-5)
-    const colombiaOffset = -5 * 60 // -5 horas en minutos
-    const utc = ahora.getTime() + (ahora.getTimezoneOffset() * 60000)
-    const fechaColombia = new Date(utc + (colombiaOffset * 60000))
-    return fechaColombia.toISOString().split('T')[0] // Formato YYYY-MM-DD
-  }
-
-  // Convertir fecha de dd/mm/yyyy a yyyy-mm-dd para input date
-  const convertirFechaParaInput = (fechaDDMMYYYY) => {
-    if (!fechaDDMMYYYY) return ''
-    const partes = fechaDDMMYYYY.split('/')
-    if (partes.length === 3) {
-      return `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`
-    }
-    return fechaDDMMYYYY
-  }
-
-  // Convertir fecha de yyyy-mm-dd a dd/mm/yyyy para mostrar
-  const convertirFechaParaMostrar = (fechaYYYYMMDD) => {
-    if (!fechaYYYYMMDD) return ''
-    const partes = fechaYYYYMMDD.split('-')
-    if (partes.length === 3) {
-      return `${partes[2]}/${partes[1]}/${partes[0]}`
-    }
-    return fechaYYYYMMDD
-  }
-
-
 
   // Validar fecha según el contexto (creación vs edición)
   const validarFecha = (fecha, esEdicion = false) => {
-    if (!fecha) return 'Fecha es obligatoria'
-    
-    const fechaSeleccionada = new Date(fecha + 'T00:00:00')
-    const hoy = new Date(obtenerFechaColombiaHoy() + 'T00:00:00')
+    const fechaSeleccionada = new Date(fecha)
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    fechaSeleccionada.setHours(0, 0, 0, 0)
 
-    // Para creación: no permitir fechas pasadas (basado en fecha de Colombia)
+    // Para creación: no permitir fechas pasadas
     if (!esEdicion && fechaSeleccionada < hoy) {
-      return `No se pueden crear préstamos con fechas pasadas. Hoy es ${convertirFechaParaMostrar(obtenerFechaColombiaHoy())}`
+      return 'No se pueden crear préstamos con fechas pasadas'
     }
 
-    // Validar que sea día hábil usando la fecha como string (formato YYYY-MM-DD)
-    const esHabil = esDiaHabil(fecha)
-
-    if (!esHabil) {
-      const diaSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][fechaSeleccionada.getDay()]
-      const esFestivo = obtenerFestivos().includes(fecha)
-      
-      if (fechaSeleccionada.getDay() === 0) {
-        return `Los domingos no son días hábiles. Selecciona de Lunes a Sábado.`
-      }
-      if (esFestivo) {
-        return `${convertirFechaParaMostrar(fecha)} es festivo en Colombia. Selecciona otro día.`
-      }
-      return `${convertirFechaParaMostrar(fecha)} (${diaSemana}) debe ser día hábil (Lunes a Sábado, no festivos)`
+    // Validar que sea día hábil
+    if (!esDiaHabil(fechaSeleccionada)) {
+      return 'La fecha debe ser un día hábil (Lunes a Sábado, no festivos)'
     }
 
     return null
-  }
-
-  // Validaciones de campos específicos
-  const validarEmail = (email) => {
-    if (!email) return null
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email) ? null : 'Email inválido'
-  }
-
-  const validarTelefonoMovilColombia = (telefono) => {
-    if (!telefono) return null
-    // Teléfonos móviles de Colombia: 10 dígitos, empiezan con 3
-    const telefonoRegex = /^3\d{9}$/
-    return telefonoRegex.test(telefono) ? null : 'Teléfono móvil debe tener 10 dígitos y empezar con 3'
-  }
-
-  const validarSoloNumeros = (valor) => {
-    if (!valor) return null
-    const numeroRegex = /^\d+$/
-    return numeroRegex.test(valor) ? null : 'Solo se permiten números'
-  }
-
-  const validarAlfanumerico = (valor) => {
-    if (!valor) return null
-    const alfanumericoRegex = /^[a-zA-Z0-9\s]+$/
-    return alfanumericoRegex.test(valor) ? null : 'Solo se permiten letras, números y espacios'
   }
 
   const handleChange = (e) => {
@@ -210,7 +131,7 @@ const PrestamosManager = () => {
     setForm({
       deudor_id: '',
       cobrador_id: '',
-      fecha_inicio: obtenerFechaColombiaHoy(), // Usar fecha actual de Colombia
+      fecha_inicio: new Date().toISOString().split('T')[0],
       monto: '',
       total_a_pagar: '',
       monto_cuota: '',
@@ -218,10 +139,6 @@ const PrestamosManager = () => {
     })
     setEditId(null)
     setErrors({})
-  }
-
-  const toggleCronograma = (prestamoId) => {
-    setCronogramaVisible(cronogramaVisible === prestamoId ? null : prestamoId)
   }
 
   const validarFormulario = () => {
@@ -243,13 +160,6 @@ const PrestamosManager = () => {
     return Object.keys(newErrors).length === 0
   }
 
-  const renderError = (field) => {
-    if (errors[field]) {
-      return <div style={{ color: '#dc3545', fontSize: '12px', marginTop: '2px' }}>{errors[field]}</div>
-    }
-    return null
-  }
-
   const crearPrestamo = async () => {
     try {
       if (!validarFormulario()) {
@@ -257,37 +167,25 @@ const PrestamosManager = () => {
         return
       }
 
-      // Obtener sesión para user_id
-      const { data: session } = await supabase.auth.getSession()
-
       // Calcular valores automáticamente
       const calculo = calcularMontoCuota(parseFloat(form.monto), form.frecuencia_pago)
 
-      // Preparar datos del préstamo (solo campos básicos primero)
+      // Preparar datos del préstamo
       const prestamoData = {
         deudor_id: parseInt(form.deudor_id),
-        cobrador_id: parseInt(form.cobrador_id),
-        prestamista_id: 1, // Por ahora null, se puede configurar después
+        cobrador_id: parseInt(form.cobrador_id), // Ahora es obligatorio
         fecha_inicio: form.fecha_inicio,
-        fecha: form.fecha_inicio, // La tabla también requiere el campo 'fecha'
         monto: parseFloat(form.monto),
         total_a_pagar: calculo.total_a_pagar,
         monto_cuota: calculo.monto_cuota,
-        modalidad_pago: form.frecuencia_pago, // Usar modalidad_pago en lugar de frecuencia_pago
-        estado: 'ACTIVO'
+        frecuencia_pago: form.frecuencia_pago,
+        estado: 'ACTIVO',
+        pagos_realizados: []
       }
 
-      // Debug: verificar formato de fecha
-
-
-      // Generar cronograma de pagos (necesita frecuencia_pago para la función)
-      const prestamoParaCronograma = {
-        ...prestamoData,
-        frecuencia_pago: form.frecuencia_pago
-      }
-      const cronograma = generarCronogramaPagos(prestamoParaCronograma)
+      // Generar cronograma de pagos
+      const cronograma = generarCronogramaPagos(prestamoData)
       prestamoData.cronograma_pagos = cronograma
-      prestamoData.pagos_realizados = []
 
       const { error } = await supabase.from('prestamos').insert([prestamoData])
       
@@ -301,7 +199,7 @@ const PrestamosManager = () => {
       }
     } catch (err) {
       console.error('Error:', err)
-      alert('Error inesperado al crear el préstamo')
+      alert('Error inesperado: ' + err.message)
     }
   }
 
@@ -314,36 +212,54 @@ const PrestamosManager = () => {
       monto: p.monto,
       total_a_pagar: p.total_a_pagar,
       monto_cuota: p.monto_cuota || '',
-      frecuencia_pago: p.modalidad_pago || p.frecuencia_pago || 'diario'
+      frecuencia_pago: p.frecuencia_pago || p.modalidad_pago || 'diario'
     })
     setErrors({})
   }
 
   const guardarEdicion = async () => {
-    if (!validarFormulario()) {
-      alert('Por favor corrige los errores en el formulario')
-      return
-    }
+    try {
+      if (!validarFormulario()) {
+        alert('Por favor corrige los errores en el formulario')
+        return
+      }
 
-    // Solo actualizar campos editables (deudor y cobrador)
-    const payload = {
-      deudor_id: parseInt(form.deudor_id),
-      cobrador_id: parseInt(form.cobrador_id)
-      // NO actualizar: monto, fecha_inicio, modalidad_pago, cronograma, etc.
-    }
+      // Recalcular valores
+      const calculo = calcularMontoCuota(parseFloat(form.monto), form.frecuencia_pago)
 
-    const { error } = await supabase
-      .from('prestamos')
-      .update(payload)
-      .eq('id', editId)
-    
-    if (error) {
-      console.error(error)
-      alert('Error al actualizar el préstamo')
-    } else {
-      alert('Préstamo actualizado exitosamente')
-      resetForm()
-      fetchPrestamos()
+      const payload = {
+        deudor_id: parseInt(form.deudor_id),
+        cobrador_id: parseInt(form.cobrador_id),
+        fecha_inicio: form.fecha_inicio,
+        monto: parseFloat(form.monto),
+        total_a_pagar: calculo.total_a_pagar,
+        monto_cuota: calculo.monto_cuota,
+        frecuencia_pago: form.frecuencia_pago
+      }
+
+      // Regenerar cronograma si cambió algo importante
+      const cronograma = generarCronogramaPagos({
+        ...payload,
+        pagos_realizados: []
+      })
+      payload.cronograma_pagos = cronograma
+
+      const { error } = await supabase
+        .from('prestamos')
+        .update(payload)
+        .eq('id', editId)
+      
+      if (error) {
+        console.error(error)
+        alert('Error al actualizar el préstamo: ' + error.message)
+      } else {
+        alert('Préstamo actualizado exitosamente')
+        resetForm()
+        fetchPrestamos()
+      }
+    } catch (err) {
+      console.error('Error:', err)
+      alert('Error inesperado: ' + err.message)
     }
   }
 
@@ -371,9 +287,16 @@ const PrestamosManager = () => {
     }
   }
 
+  const renderError = (fieldName) => {
+    if (errors[fieldName]) {
+      return <div style={{ color: '#dc3545', fontSize: '12px', marginTop: '2px' }}>{errors[fieldName]}</div>
+    }
+    return null
+  }
+
   return (
     <div>
-      <h2>Gestión de Préstamos</h2>
+      <h2>🏦 Gestión de Préstamos PrestaYa</h2>
       
       {/* Panel de información */}
       <div style={{ 
@@ -395,21 +318,6 @@ const PrestamosManager = () => {
 
       <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '5px' }}>
         <h3>{editId ? '✏️ Editar Préstamo' : '➕ Nuevo Préstamo'}</h3>
-        
-        {editId && (
-          <div style={{ 
-            backgroundColor: '#fff3cd', 
-            border: '1px solid #ffeaa7', 
-            borderRadius: '4px', 
-            padding: '10px', 
-            marginBottom: '15px',
-            fontSize: '14px',
-            color: '#856404'
-          }}>
-            <strong>ℹ️ Modo Edición:</strong> Solo se pueden modificar el deudor y cobrador. 
-            Los campos de monto, fecha y modalidad están bloqueados para mantener la integridad del cronograma de pagos.
-          </div>
-        )}
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '10px' }}>
           <div>
@@ -445,26 +353,15 @@ const PrestamosManager = () => {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', color: '#666', display: 'block' }}>
-              Fecha de Otorgamiento (Zona horaria Colombia)
-            </label>
             <input
               type="date"
               name="fecha_inicio"
               value={form.fecha_inicio}
               onChange={handleChange}
               required
-              disabled={editId} // Deshabilitar durante edición
-              title={`Fecha de Otorgamiento del Crédito - Hoy: ${convertirFechaParaMostrar(obtenerFechaColombiaHoy())}`}
-              style={{ 
-                width: '100%', 
-                border: errors.fecha_inicio ? '2px solid #dc3545' : '1px solid #ccc',
-                backgroundColor: editId ? '#e9ecef' : 'white'
-              }}
+              title="Fecha de Otorgamiento del Crédito"
+              style={{ width: '100%', border: errors.fecha_inicio ? '2px solid #dc3545' : '1px solid #ccc' }}
             />
-            <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
-              Hoy: {convertirFechaParaMostrar(obtenerFechaColombiaHoy())}
-            </div>
             {renderError('fecha_inicio')}
           </div>
 
@@ -476,20 +373,10 @@ const PrestamosManager = () => {
               value={form.monto}
               onChange={handleChange}
               required
-              disabled={editId} // Deshabilitar durante edición
               min="0"
               step="1000"
-              style={{ 
-                width: '100%', 
-                border: errors.monto ? '2px solid #dc3545' : '1px solid #ccc',
-                backgroundColor: editId ? '#e9ecef' : 'white'
-              }}
+              style={{ width: '100%', border: errors.monto ? '2px solid #dc3545' : '1px solid #ccc' }}
             />
-            {editId && (
-              <div style={{ fontSize: '10px', color: '#6c757d', marginTop: '2px' }}>
-                ⚠️ El monto no se puede cambiar en préstamos existentes
-              </div>
-            )}
             {renderError('monto')}
           </div>
 
@@ -498,21 +385,11 @@ const PrestamosManager = () => {
               name="frecuencia_pago" 
               value={form.frecuencia_pago} 
               onChange={handleChange}
-              disabled={editId} // Deshabilitar durante edición
-              style={{ 
-                width: '100%', 
-                backgroundColor: editId ? '#e9ecef' : 'white',
-                cursor: editId ? 'not-allowed' : 'pointer'
-              }}
+              style={{ width: '100%' }}
             >
               <option value="diario">📅 Diario (24 pagos)</option>
               <option value="semanal">📆 Semanal (4 pagos)</option>
             </select>
-            {editId && (
-              <div style={{ fontSize: '10px', color: '#6c757d', marginTop: '2px' }}>
-                ⚠️ La modalidad no se puede cambiar en préstamos existentes
-              </div>
-            )}
           </div>
         </div>
 
@@ -560,16 +437,46 @@ const PrestamosManager = () => {
         <div style={{ display: 'flex', gap: '10px' }}>
           {editId ? (
             <>
-              <button onClick={guardarEdicion} style={{ backgroundColor: '#28a745', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px' }}>
-                Guardar Cambios
+              <button 
+                onClick={guardarEdicion} 
+                style={{ 
+                  backgroundColor: '#28a745', 
+                  color: 'white', 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                💾 Guardar Cambios
               </button>
-              <button onClick={resetForm} style={{ backgroundColor: '#6c757d', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px' }}>
-                Cancelar
+              <button 
+                onClick={resetForm} 
+                style={{ 
+                  backgroundColor: '#6c757d', 
+                  color: 'white', 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                ❌ Cancelar
               </button>
             </>
           ) : (
-            <button onClick={crearPrestamo} style={{ backgroundColor: '#007bff', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px' }}>
-              Crear Préstamo con Cronograma
+            <button 
+              onClick={crearPrestamo} 
+              style={{ 
+                backgroundColor: '#007bff', 
+                color: 'white', 
+                padding: '8px 16px', 
+                border: 'none', 
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              🚀 Crear Préstamo con Cronograma
             </button>
           )}
         </div>
@@ -602,13 +509,15 @@ const PrestamosManager = () => {
                 <td>{p.id}</td>
                 <td>{p.deudores?.nombre || '—'}</td>
                 <td>{p.cobradores?.nombre || 'Sin asignar'}</td>
-                <td>{convertirFechaParaMostrar(p.fecha_inicio || p.fecha)}</td>
+                <td>{p.fecha_inicio || p.fecha}</td>
                 <td>{formatearMoneda(p.monto)}</td>
                 <td>{formatearMoneda(p.total_a_pagar)}</td>
                 <td>{p.monto_cuota ? formatearMoneda(p.monto_cuota) : '—'}</td>
                 <td>
-                  {(p.modalidad_pago || p.frecuencia_pago) === 'diario' ? '📅 Diario' : '📆 Semanal'}
-                  {!p.modalidad_pago && !p.frecuencia_pago && '—'}
+                  {p.frecuencia_pago === 'diario' ? '📅 Diario' : '📆 Semanal'}
+                  {p.modalidad_pago && !p.frecuencia_pago && (
+                    p.modalidad_pago === 'diario' ? '📅 Diario' : '📆 Semanal'
+                  )}
                 </td>
                 <td>
                   <span style={{ 
@@ -634,24 +543,33 @@ const PrestamosManager = () => {
                   ) : '—'}
                 </td>
                 <td>
-                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                    <button 
-                      onClick={() => toggleCronograma(p.id)}
-                      style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '3px' }}
-                    >
-                      {cronogramaVisible === p.id ? 'Ocultar' : 'Ver'} Cronograma
-                    </button>
+                  <div style={{ display: 'flex', gap: '5px' }}>
                     <button 
                       onClick={() => iniciarEdicion(p)}
-                      style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '3px' }}
+                      style={{ 
+                        padding: '4px 8px', 
+                        fontSize: '12px', 
+                        backgroundColor: '#ffc107', 
+                        border: 'none', 
+                        borderRadius: '3px',
+                        cursor: 'pointer'
+                      }}
                     >
-                      Editar
+                      ✏️ Editar
                     </button>
                     <button 
                       onClick={() => borrarPrestamo(p.id)}
-                      style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px' }}
+                      style={{ 
+                        padding: '4px 8px', 
+                        fontSize: '12px', 
+                        backgroundColor: '#dc3545', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '3px',
+                        cursor: 'pointer'
+                      }}
                     >
-                      Eliminar
+                      🗑️ Eliminar
                     </button>
                   </div>
                 </td>
@@ -660,80 +578,6 @@ const PrestamosManager = () => {
           )}
         </tbody>
       </table>
-
-      {/* Mostrar cronograma detallado */}
-      {cronogramaVisible && (
-        <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
-          <h3>Cronograma de Pagos - Préstamo #{cronogramaVisible}</h3>
-          {(() => {
-            const prestamo = prestamos.find(p => p.id === cronogramaVisible)
-            if (!prestamo || !prestamo.cronograma_pagos) {
-              return <p>No hay cronograma disponible para este préstamo.</p>
-            }
-
-            const cronograma = prestamo.cronograma_pagos
-            
-            return (
-              <div>
-                <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#fff3cd', borderRadius: '4px', fontSize: '12px' }}>
-                  <strong>Debug:</strong> Modalidad: {prestamo.modalidad_pago || prestamo.frecuencia_pago || 'No definida'} | 
-                  Cuotas en cronograma: {prestamo.cronograma_pagos?.length || 0}
-                </div>
-                <table border="1" cellPadding="8" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead style={{ backgroundColor: '#e9ecef' }}>
-                  <tr>
-                    <th>Cuota #</th>
-                    <th>Fecha Vencimiento</th>
-                    <th>Monto</th>
-                    <th>Estado</th>
-                    <th>Días Atraso</th>
-                    <th>Multa</th>
-                    <th>Fecha Pago Real</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cronograma.map((cuota, index) => (
-                    <tr key={index} style={{ 
-                      backgroundColor: cuota.estado === 'PAGADO' ? '#d4edda' : 
-                                     cuota.estado === 'ATRASADO' ? '#f8d7da' : 'white'
-                    }}>
-                      <td>{cuota.numero_cuota}</td>
-                      <td>{convertirFechaParaMostrar(cuota.fecha_vencimiento)}</td>
-                      <td>{formatearMoneda(cuota.monto)}</td>
-                      <td>
-                        <span style={{ 
-                          color: cuota.estado === 'PAGADO' ? '#155724' : 
-                                cuota.estado === 'ATRASADO' ? '#721c24' : '#856404',
-                          fontWeight: 'bold'
-                        }}>
-                          {cuota.estado}
-                        </span>
-                      </td>
-                      <td>{cuota.dias_atraso || 0}</td>
-                      <td>{cuota.multa_mora ? formatearMoneda(cuota.multa_mora) : '—'}</td>
-                      <td>{cuota.fecha_pago_real ? convertirFechaParaMostrar(cuota.fecha_pago_real) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                </table>
-              </div>
-            )
-          })()}
-          <button 
-            onClick={() => setCronogramaVisible(null)}
-            style={{ 
-              marginTop: '10px', 
-              padding: '8px 16px', 
-              backgroundColor: '#6c757d', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px' 
-            }}
-          >
-            Cerrar Cronograma
-          </button>
-        </div>
-      )}
     </div>
   )
 }

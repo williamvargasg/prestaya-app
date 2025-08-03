@@ -8,6 +8,8 @@ const Login = () => {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
+
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
@@ -37,6 +39,9 @@ const Login = () => {
         autoComplete="current-password"
       />
       <button type="submit" disabled={loading}>{loading ? 'Ingresando...' : 'Ingresar'}</button>
+      
+
+      
       {error && <p style={{ color: 'red' }}>{error}</p>}
     </form>
   )

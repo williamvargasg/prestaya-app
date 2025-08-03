@@ -5,6 +5,7 @@ import Login from './components/Auth/Login'
 import Dashboard from './components/Admin/Dashboard'
 import CobradorDashboard from './components/Cobrador/Dashboard'
 
+
 function App() {
   const { user, loading, signOut } = useAuth()
   const { role, roleLoading } = useUserRole(user)
@@ -30,6 +31,7 @@ function App() {
             <p>Tu usuario no tiene permisos asignados. Contacta al administrador.</p>
           </div>
         )}
+
       </main>
     </div>
   )

@@ -20,6 +20,17 @@ const DeudoresManager = () => {
   })
   const [editId, setEditId] = useState(null)
 
+  const opcionesParentesco = [
+    'Espos@- Compañero@',
+    'Padre-Madre',
+    'Hij@',
+    'Abuel@',
+    'Prim@',
+    'Sobrin@',
+    'Novi@',
+    'Amig@'
+  ]
+
   const fetchDeudores = async () => {
     const { data, error } = await supabase
       .from('deudores')
@@ -79,16 +90,16 @@ const DeudoresManager = () => {
     setForm({
       nombre: d.nombre,
       cedula: d.cedula,
-      telefono: d.telefono,
+      telefono: d.telefono || '',
       whatsapp: d.whatsapp,
-      email: d.email,
-      direccion_casa: d.direccion_casa,
-      barrio: d.barrio,
-      direccion_trabajo: d.direccion_trabajo,
-      referencia_nombre: d.referencia_nombre,
-      referencia_telefono: d.referencia_telefono,
-      referencia_parentesco: d.referencia_parentesco,
-      cobrador_id: d.cobrador_id
+      email: d.email || '',
+      direccion_casa: d.direccion_casa || '',
+      barrio: d.barrio || '',
+      direccion_trabajo: d.direccion_trabajo || '',
+      referencia_nombre: d.referencia_nombre || '',
+      referencia_telefono: d.referencia_telefono || '',
+      referencia_parentesco: d.referencia_parentesco || '',
+      cobrador_id: d.cobrador_id || ''
     })
   }
 
@@ -117,30 +128,109 @@ const DeudoresManager = () => {
 
       <div style={{ marginBottom: '20px', padding: '10px', border: '1px solid #ccc' }}>
         <h3>{editId ? 'Editar Deudor' : 'Nuevo Deudor'}</h3>
-        {Object.keys(form).map(key => (
-          key === 'cobrador_id' ? (
-            <select
-              key={key}
-              name={key}
-              value={form[key]}
-              onChange={handleChange}
-            >
-              <option value="">Asignar cobrador</option>
-              {cobradores.map(c => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              key={key}
-              type="text"
-              name={key}
-              placeholder={key.replace('_', ' ')}
-              value={form[key]}
-              onChange={handleChange}
-            />
-          )
-        ))}
+        
+        <input
+          type="text"
+          name="nombre"
+          placeholder="Nombre"
+          value={form.nombre}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="cedula"
+          placeholder="Cédula"
+          value={form.cedula}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="telefono"
+          placeholder="Teléfono"
+          value={form.telefono}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="whatsapp"
+          placeholder="WhatsApp"
+          value={form.whatsapp}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="email"
+          name="email"
+          placeholder="Email"
+          value={form.email}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="direccion_casa"
+          placeholder="Dirección Casa"
+          value={form.direccion_casa}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="barrio"
+          placeholder="Barrio"
+          value={form.barrio}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="direccion_trabajo"
+          placeholder="Dirección Trabajo"
+          value={form.direccion_trabajo}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="referencia_nombre"
+          placeholder="Referencia Nombre"
+          value={form.referencia_nombre}
+          onChange={handleChange}
+        />
+        
+        <input
+          type="text"
+          name="referencia_telefono"
+          placeholder="Referencia Teléfono"
+          value={form.referencia_telefono}
+          onChange={handleChange}
+        />
+        
+        <select
+          name="referencia_parentesco"
+          value={form.referencia_parentesco}
+          onChange={handleChange}
+        >
+          <option value="">Seleccionar parentesco</option>
+          {opcionesParentesco.map(opcion => (
+            <option key={opcion} value={opcion}>{opcion}</option>
+          ))}
+        </select>
+        
+        <select
+          name="cobrador_id"
+          value={form.cobrador_id}
+          onChange={handleChange}
+        >
+          <option value="">Asignar cobrador</option>
+          {cobradores.map(c => (
+            <option key={c.id} value={c.id}>{c.nombre}</option>
+          ))}
+        </select>
+        
         {editId ? (
           <>
             <button onClick={guardarEdicion}>Guardar</button>
@@ -157,6 +247,7 @@ const DeudoresManager = () => {
             <th>ID</th>
             <th>Nombre</th>
             <th>Cédula</th>
+            <th>WhatsApp</th>
             <th>Cobrador</th>
             <th>Acciones</th>
           </tr>
@@ -164,7 +255,7 @@ const DeudoresManager = () => {
         <tbody>
           {deudores.length === 0 ? (
             <tr>
-              <td colSpan="5" style={{ textAlign: 'center' }}>No hay deudores.</td>
+              <td colSpan="6" style={{ textAlign: 'center' }}>No hay deudores.</td>
             </tr>
           ) : (
             deudores.map(d => (
@@ -172,6 +263,7 @@ const DeudoresManager = () => {
                 <td>{d.id}</td>
                 <td>{d.nombre}</td>
                 <td>{d.cedula}</td>
+                <td>{d.whatsapp}</td>
                 <td>{d.cobradores?.nombre || '—'}</td>
                 <td>
                   <button onClick={() => iniciarEdicion(d)}>Editar</button>

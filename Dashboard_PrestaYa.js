@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
-import ZonasManager from './ZonasManager'
-import CobradoresManager from './CobradoresManager'
-import DeudoresManager from './DeudoresManager'
-import PrestamosManager from './PrestamosManager'
-import FestivosManager from './FestivosManager'
-import MultasManager from './MultasManager'
+import ZonasManager from './src/components/Admin/ZonasManager'
+import CobradoresManager from './src/components/Admin/CobradoresManager'
+import DeudoresManager from './src/components/Admin/DeudoresManager'
+import PrestamosManager from './src/components/Admin/PrestamosManager'
+import FestivosManager from './src/components/Admin/FestivosManager'
+import MultasManager from './src/components/Admin/MultasManager'
 
 const Dashboard = () => {
   const [activeModule, setActiveModule] = useState('zonas')
