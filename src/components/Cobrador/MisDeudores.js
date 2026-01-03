@@ -199,11 +199,16 @@ const MisDeudores = () => {
       const email = session.data?.session?.user?.email
       if (!email) return
 
+      // Manejar alias para usuario de prueba
+      const emailBusqueda = email === 'cobrador.prueba@prestaya.com' 
+        ? 'cobrador.prueba@gmail.com' 
+        : email
+
       // Buscar id cobrador según email
       const { data, error } = await supabase
         .from('cobradores')
         .select('id')
-        .ilike('email', email)
+        .ilike('email', emailBusqueda)
         .maybeSingle()
       
       if (error) {

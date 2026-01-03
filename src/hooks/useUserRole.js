@@ -30,6 +30,21 @@ export function useUserRole(user) {
         .select('email')
         .eq('active', true)
         .ilike('email', email)
+
+      // Fallback para usuario de prueba (manejo de alias de correo)
+      if ((!cobradores || cobradores.length === 0) && email === 'cobrador.prueba@prestaya.com') {
+        const { data: cobradoresTest } = await supabase
+          .from('cobradores')
+          .select('email')
+          .eq('active', true)
+          .ilike('email', 'cobrador.prueba@gmail.com')
+        
+        if (cobradoresTest && cobradoresTest.length > 0) {
+          cobradores = cobradoresTest
+          errorCob = null
+        }
+      }
+
       if (!errorCob && cobradores && cobradores.length > 0) {
         if (mounted) setRole('cobrador')
         setRoleLoading(false)
