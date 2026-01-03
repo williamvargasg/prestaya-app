@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../supabaseClient'
 import { obtenerProximoPago } from '../../utils/loanUtils'
 import { registerPayment } from '../../services/paymentService'
@@ -224,75 +224,76 @@ const MisDeudores = () => {
     fetchCobradorId()
   }, [])
 
-  useEffect(() => {
+  const fetchDeudoresConPrestamos = useCallback(async () => {
     if (!cobradorId) return
 
-    const fetchDeudoresConPrestamos = async () => {
-      try {
-        // 1. Obtener deudores del cobrador
-        const { data: deudores, error: errorDeudores } = await supabase
-          .from('deudores')
-          .select('*')
-          .eq('cobrador_id', cobradorId)
-          .order('nombre', { ascending: true })
-        
-        if (errorDeudores) {
-          console.error('Error obteniendo deudores:', errorDeudores)
-          setLoading(false)
-          return
-        }
+    try {
+      setLoading(true)
+      // 1. Obtener deudores del cobrador
+      const { data: deudores, error: errorDeudores } = await supabase
+        .from('deudores')
+        .select('*')
+        .eq('cobrador_id', cobradorId)
+        .order('nombre', { ascending: true })
+      
+      if (errorDeudores) {
+        console.error('Error obteniendo deudores:', errorDeudores)
+        setLoading(false)
+        return
+      }
 
-        // 2. Para cada deudor, obtener sus préstamos activos y crear una fila por préstamo
-        const prestamosConDeudor = []
-        
-        await Promise.all(
-          deudores.map(async (deudor) => {
-            const { data: prestamos, error: errorPrestamos } = await supabase
-              .from('prestamos')
-              .select('*')
-              .eq('deudor_id', deudor.id)
-              .neq('estado', 'finalizado')
-              .order('id', { ascending: true })
+      // 2. Para cada deudor, obtener sus préstamos activos y crear una fila por préstamo
+      const prestamosConDeudor = []
+      
+      await Promise.all(
+        deudores.map(async (deudor) => {
+          const { data: prestamos, error: errorPrestamos } = await supabase
+            .from('prestamos')
+            .select('*')
+            .eq('deudor_id', deudor.id)
+            .neq('estado', 'finalizado')
+            .order('id', { ascending: true })
+          
+          if (errorPrestamos) {
+            console.error(`Error obteniendo préstamos para deudor ${deudor.id}:`, errorPrestamos)
+            return
+          }
+
+          // 3. Para cada préstamo, crear una entrada individual
+          prestamos.forEach(prestamo => {
+            const proximoPago = obtenerProximoPago(prestamo)
             
-            if (errorPrestamos) {
-              console.error(`Error obteniendo préstamos para deudor ${deudor.id}:`, errorPrestamos)
-              return
-            }
-
-            // 3. Para cada préstamo, crear una entrada individual
-            prestamos.forEach(prestamo => {
-              const proximoPago = obtenerProximoPago(prestamo)
-              
-              // 4. Incluir todos los préstamos activos (no finalizados)
-              // Si tiene cuota pendiente para hoy, se mostrará como prioridad o se puede filtrar en la vista si se desea
-              prestamosConDeudor.push({
-                ...prestamo,
-                deudor: deudor,
-                proximoPago: proximoPago,
-                esCobroHoy: proximoPago.hay_cuotas_pendientes && proximoPago.fecha_vencimiento === fechaCobro
-              })
+            // 4. Incluir todos los préstamos activos (no finalizados)
+            // Si tiene cuota pendiente para hoy, se mostrará como prioridad o se puede filtrar en la vista si se desea
+            prestamosConDeudor.push({
+              ...prestamo,
+              deudor: deudor,
+              proximoPago: proximoPago,
+              esCobroHoy: proximoPago.hay_cuotas_pendientes && proximoPago.fecha_vencimiento === fechaCobro
             })
           })
-        )
-
-        // 5. Ordenar por nombre de deudor y luego por ID de préstamo
-        prestamosConDeudor.sort((a, b) => {
-          if (a.deudor.nombre !== b.deudor.nombre) {
-            return a.deudor.nombre.localeCompare(b.deudor.nombre)
-          }
-          return a.id - b.id
         })
-        
-        setDeudoresConPrestamos(prestamosConDeudor)
-        setLoading(false)
-      } catch (error) {
-        console.error('Error general:', error)
-        setLoading(false)
-      }
-    }
+      )
 
-    fetchDeudoresConPrestamos()
+      // 5. Ordenar por nombre de deudor y luego por ID de préstamo
+      prestamosConDeudor.sort((a, b) => {
+        if (a.deudor.nombre !== b.deudor.nombre) {
+          return a.deudor.nombre.localeCompare(b.deudor.nombre)
+        }
+        return a.id - b.id
+      })
+      
+      setDeudoresConPrestamos(prestamosConDeudor)
+      setLoading(false)
+    } catch (error) {
+      console.error('Error general:', error)
+      setLoading(false)
+    }
   }, [cobradorId, fechaCobro])
+
+  useEffect(() => {
+    fetchDeudoresConPrestamos()
+  }, [fetchDeudoresConPrestamos])
 
   if (loading) return <div>Cargando deudores...</div>
 
