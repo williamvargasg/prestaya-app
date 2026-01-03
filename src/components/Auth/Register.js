@@ -155,6 +155,8 @@ const Register = ({ onBackToLogin }) => {
         errorMessage = 'La contraseña debe tener al menos 6 caracteres'
       } else if (error.message?.includes('Invalid email')) {
         errorMessage = 'Email inválido'
+      } else if (error.message?.includes('is invalid')) {
+        errorMessage = 'El email no es válido o el registro público está desactivado en Supabase'
       } else if (error.message) {
         errorMessage = error.message
       }
