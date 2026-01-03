@@ -1,6 +1,173 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../supabaseClient'
 import { obtenerProximoPago } from '../../utils/loanUtils'
+import { registerPayment } from '../../services/paymentService'
+
+const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess }) => {
+  const [monto, setMonto] = useState('')
+  const [metodoPago, setMetodoPago] = useState('efectivo')
+  const [notas, setNotas] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (isOpen && prestamo) {
+      // Pre-fill with recommended amount if available
+      if (prestamo.proximoPago?.monto_total_recomendado) {
+        setMonto(prestamo.proximoPago.monto_total_recomendado)
+      } else {
+        setMonto('')
+      }
+      setMetodoPago('efectivo')
+      setNotas('')
+      setError(null)
+    }
+  }, [isOpen, prestamo])
+
+  if (!isOpen || !prestamo) return null
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    try {
+      const paymentData = {
+        prestamo_id: prestamo.id,
+        monto: parseFloat(monto),
+        metodo_pago: metodoPago,
+        cobrador_id: cobradorId,
+        notas: notas,
+        deudor_id: prestamo.deudor.id
+      }
+
+      const result = await registerPayment(paymentData)
+
+      if (result.success) {
+        onPaymentSuccess(result)
+        onClose()
+      } else {
+        setError(result.error || 'Error al registrar el pago')
+      }
+    } catch (err) {
+      setError(err.message || 'Error inesperado')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        padding: '20px',
+        borderRadius: '8px',
+        width: '90%',
+        maxWidth: '400px',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+      }}>
+        <h3 style={{ marginTop: 0, color: '#2c3e50' }}>💰 Registrar Pago</h3>
+        
+        <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+          <div style={{ fontWeight: 'bold' }}>{prestamo.deudor.nombre}</div>
+          <div style={{ fontSize: '12px', color: '#6c757d' }}>Préstamo #{prestamo.id}</div>
+        </div>
+
+        {error && (
+          <div style={{ 
+            backgroundColor: '#f8d7da', 
+            color: '#721c24', 
+            padding: '10px', 
+            borderRadius: '4px',
+            marginBottom: '15px',
+            fontSize: '14px'
+          }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Monto a Pagar</label>
+            <input
+              type="number"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+              required
+              min="1"
+            />
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Método de Pago</label>
+            <select
+              value={metodoPago}
+              onChange={(e) => setMetodoPago(e.target.value)}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+            >
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="nequi">Nequi</option>
+              <option value="daviplata">Daviplata</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Notas (Opcional)</label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box', minHeight: '60px' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #ced4da',
+                backgroundColor: 'white',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                backgroundColor: '#28a745',
+                color: 'white',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+              disabled={loading}
+            >
+              {loading ? 'Procesando...' : 'Confirmar Pago'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
 
 const MisDeudores = () => {
   const [deudoresConPrestamos, setDeudoresConPrestamos] = useState([])
@@ -11,6 +178,17 @@ const MisDeudores = () => {
     const hoy = new Date()
     return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   })
+
+  const [selectedPrestamo, setSelectedPrestamo] = useState(null)
+  const [showModal, setShowModal] = useState(false)
+  const [mensajeExito, setMensajeExito] = useState(null)
+
+  useEffect(() => {
+    if (mensajeExito) {
+      const timer = setTimeout(() => setMensajeExito(null), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [mensajeExito])
 
   useEffect(() => {
     const fetchCobradorId = async () => {
@@ -25,13 +203,21 @@ const MisDeudores = () => {
       const { data, error } = await supabase
         .from('cobradores')
         .select('id')
-        .eq('email', email)
-        .single()
+        .ilike('email', email)
+        .maybeSingle()
+      
       if (error) {
         console.error('Error obteniendo cobrador:', error)
         setLoading(false)
         return
       }
+      
+      if (!data) {
+        console.warn('Cobrador no encontrado para el email:', email)
+        setLoading(false)
+        return
+      }
+      
       setCobradorId(data.id)
     }
 
@@ -77,14 +263,14 @@ const MisDeudores = () => {
             prestamos.forEach(prestamo => {
               const proximoPago = obtenerProximoPago(prestamo)
               
-              // 4. Solo incluir préstamos que tienen cuotas para el día de cobro
-              if (proximoPago.hay_cuotas_pendientes && proximoPago.fecha_vencimiento === fechaCobro) {
-                prestamosConDeudor.push({
-                  ...prestamo,
-                  deudor: deudor,
-                  proximoPago: proximoPago
-                })
-              }
+              // 4. Incluir todos los préstamos activos (no finalizados)
+              // Si tiene cuota pendiente para hoy, se mostrará como prioridad o se puede filtrar en la vista si se desea
+              prestamosConDeudor.push({
+                ...prestamo,
+                deudor: deudor,
+                proximoPago: proximoPago,
+                esCobroHoy: proximoPago.hay_cuotas_pendientes && proximoPago.fecha_vencimiento === fechaCobro
+              })
             })
           })
         )
@@ -146,8 +332,8 @@ const MisDeudores = () => {
           borderRadius: '8px',
           border: '2px dashed #dee2e6'
         }}>
-          <p style={{ fontSize: '18px', color: '#6c757d', margin: '0 0 10px 0' }}>📋 No hay préstamos con cuotas para el día de cobro</p>
-          <p style={{ fontSize: '14px', color: '#868e96', margin: 0 }}>Los préstamos aparecerán aquí cuando tengan cuotas que vencen el {fechaCobro}</p>
+          <p style={{ fontSize: '18px', color: '#6c757d', margin: '0 0 10px 0' }}>📋 No hay préstamos activos asignados</p>
+          <p style={{ fontSize: '14px', color: '#868e96', margin: 0 }}>Los préstamos asignados a su cuenta aparecerán aquí.</p>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -172,9 +358,11 @@ const MisDeudores = () => {
             <tbody>
               {deudoresConPrestamos.map(prestamo => {
                 const montoACobrar = prestamo.proximoPago.monto_total_recomendado || 0
+                const esCobroHoy = prestamo.esCobroHoy
+                const backgroundColor = esCobroHoy ? '#ffffff' : '#f8f9fa' // Destacar los de hoy
                 
                 return (
-                  <tr key={`${prestamo.deudor.id}-${prestamo.id}`} style={{ borderBottom: '1px solid #dee2e6' }}>
+                  <tr key={`${prestamo.deudor.id}-${prestamo.id}`} style={{ borderBottom: '1px solid #dee2e6', backgroundColor }}>
                     <td style={{ padding: '12px' }}>
                       <div>
                         <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>{prestamo.deudor.nombre}</div>
@@ -219,7 +407,7 @@ const MisDeudores = () => {
                         #{prestamo.proximoPago.numero_cuota}
                       </span>
                       <div style={{ fontSize: '10px', color: '#6c757d', marginTop: '2px' }}>
-                        de {prestamo.numero_cuotas}
+                        Vence: {prestamo.proximoPago.fecha_vencimiento}
                       </div>
                     </td>
                     <td style={{ padding: '12px', textAlign: 'right' }}>
@@ -228,7 +416,7 @@ const MisDeudores = () => {
                         fontSize: '16px', 
                         color: montoACobrar > 0 ? '#d32f2f' : '#6c757d'
                       }}>
-                        {montoACobrar > 0 ? formatearMonto(montoACobrar) : 'Sin monto'}
+                        {montoACobrar > 0 ? formatearMonto(montoACobrar) : 'Sin cobro hoy'}
                       </div>
                       {prestamo.proximoPago.es_atrasado && (
                         <div style={{ 
@@ -253,8 +441,8 @@ const MisDeudores = () => {
                         }}
                         disabled={montoACobrar === 0}
                         onClick={() => {
-                          // Aquí se podría navegar al registro de pago
-                          console.log('Registrar pago para préstamo:', prestamo.id, 'deudor:', prestamo.deudor.id)
+                          setSelectedPrestamo(prestamo)
+                          setShowModal(true)
                         }}
                       >
                         💰 Cobrar
@@ -268,6 +456,18 @@ const MisDeudores = () => {
         </div>
       )}
       
+      <PaymentModal 
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        prestamo={selectedPrestamo}
+        cobradorId={cobradorId}
+        onPaymentSuccess={(result) => {
+          setMensajeExito(result.message)
+          // Recargar la lista
+          fetchDeudoresConPrestamos()
+        }}
+      />
+      
       <div style={{ 
         marginTop: '20px', 
         padding: '15px', 
@@ -278,11 +478,9 @@ const MisDeudores = () => {
       }}>
         <strong>ℹ️ Información:</strong>
         <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-          <li>Cada préstamo se muestra en una línea separada con su cuota específica</li>
-          <li>Solo se muestran préstamos con cuotas que vencen el {fechaCobro}</li>
-          <li>El monto a cobrar se mostrará a partir de las 12:01 AM del día de cobro</li>
-          <li>Los préstamos finalizados no aparecen en esta lista</li>
-          <li>El botón "Cobrar" se habilita solo cuando hay monto disponible</li>
+          <li>Se muestran todos los préstamos activos asignados.</li>
+          <li>Los préstamos que vencen hoy o tienen mora se destacan.</li>
+          <li>El botón "Cobrar" se habilita solo cuando hay un monto calculado para cobrar hoy.</li>
         </ul>
       </div>
     </div>
