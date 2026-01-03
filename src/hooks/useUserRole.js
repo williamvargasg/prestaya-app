@@ -28,6 +28,7 @@ export function useUserRole(user) {
       let { data: cobradores, error: errorCob } = await supabase
         .from('cobradores')
         .select('email')
+        .eq('active', true)
         .ilike('email', email)
       if (!errorCob && cobradores && cobradores.length > 0) {
         if (mounted) setRole('cobrador')

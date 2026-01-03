@@ -37,6 +37,7 @@ export const getCobradores = async () => {
       *,
       zonas (nombre)
     `)
+    .eq('active', true)
     .order('id', { ascending: true })
   if (error) throw error
   return data

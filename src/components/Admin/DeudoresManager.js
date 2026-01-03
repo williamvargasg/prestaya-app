@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../supabaseClient'
+import { 
+  validarEmail, 
+  validarTelefonoMovilColombia, 
+  validarSoloNumeros 
+} from '../../utils/validations'
 
 const DeudoresManager = () => {
   const [deudores, setDeudores] = useState([])
@@ -19,6 +24,7 @@ const DeudoresManager = () => {
     cobrador_id: ''
   })
   const [editId, setEditId] = useState(null)
+  const [errors, setErrors] = useState({})
 
   const opcionesParentesco = [
     'Espos@- Compañero@',
@@ -44,7 +50,11 @@ const DeudoresManager = () => {
   }
 
   const fetchCobradores = async () => {
-    const { data, error } = await supabase.from('cobradores').select('*').order('nombre')
+    const { data, error } = await supabase
+      .from('cobradores')
+      .select('*')
+      .eq('active', true)
+      .order('nombre')
     if (error) console.error(error)
     else setCobradores(data)
   }
@@ -55,7 +65,60 @@ const DeudoresManager = () => {
   }, [])
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
+    const { name, value } = e.target
+    setForm({ ...form, [name]: value })
+    
+    // Limpiar error al escribir
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: null })
+    }
+  }
+
+  const validarFormulario = () => {
+    const newErrors = {}
+    
+    if (!form.nombre) newErrors.nombre = 'Nombre es obligatorio'
+    if (!form.cedula) newErrors.cedula = 'Cédula es obligatoria'
+    if (!form.cobrador_id) newErrors.cobrador_id = 'Cobrador es obligatorio'
+    
+    if (form.telefono) {
+      const errorTel = validarTelefonoMovilColombia(form.telefono)
+      if (errorTel) newErrors.telefono = errorTel
+    }
+    
+    if (form.whatsapp) {
+      const errorWsp = validarTelefonoMovilColombia(form.whatsapp)
+      if (errorWsp) newErrors.whatsapp = errorWsp
+    }
+
+    if (form.referencia_telefono) {
+      const errorRefTel = validarTelefonoMovilColombia(form.referencia_telefono)
+      if (errorRefTel) newErrors.referencia_telefono = errorRefTel
+    }
+    
+    if (form.email) {
+      const errorEmail = validarEmail(form.email)
+      if (errorEmail) newErrors.email = errorEmail
+    }
+    
+    if (form.cedula) {
+      const errorCedula = validarSoloNumeros(form.cedula)
+      if (errorCedula) {
+        newErrors.cedula = errorCedula
+      } else if (form.cedula.length > 10) {
+        newErrors.cedula = 'La cédula no puede tener más de 10 dígitos'
+      }
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+  
+  const renderError = (field) => {
+    if (errors[field]) {
+      return <div style={{ color: '#dc3545', fontSize: '10px', marginTop: '2px' }}>{errors[field]}</div>
+    }
+    return null
   }
 
   const resetForm = () => {
@@ -74,9 +137,24 @@ const DeudoresManager = () => {
       cobrador_id: ''
     })
     setEditId(null)
+    setErrors({})
   }
 
   const crearDeudor = async () => {
+    if (!validarFormulario()) return
+    
+    // Validar cédula única
+    const { data: existeCedula } = await supabase
+      .from('deudores')
+      .select('id')
+      .eq('cedula', form.cedula)
+      .maybeSingle()
+
+    if (existeCedula) {
+      setErrors(prev => ({ ...prev, cedula: 'Esta cédula ya está registrada' }))
+      return
+    }
+    
     const { error } = await supabase.from('deudores').insert([form])
     if (error) console.error(error)
     else {
@@ -104,6 +182,21 @@ const DeudoresManager = () => {
   }
 
   const guardarEdicion = async () => {
+    if (!validarFormulario()) return
+
+    // Validar cédula única
+    const { data: existeCedula } = await supabase
+      .from('deudores')
+      .select('id')
+      .eq('cedula', form.cedula)
+      .neq('id', editId)
+      .maybeSingle()
+
+    if (existeCedula) {
+      setErrors(prev => ({ ...prev, cedula: 'Esta cédula ya está registrada' }))
+      return
+    }
+
     const { error } = await supabase
       .from('deudores')
       .update(form)
@@ -129,116 +222,175 @@ const DeudoresManager = () => {
       <div style={{ marginBottom: '20px', padding: '10px', border: '1px solid #ccc' }}>
         <h3>{editId ? 'Editar Deudor' : 'Nuevo Deudor'}</h3>
         
-        <input
-          type="text"
-          name="nombre"
-          placeholder="Nombre"
-          value={form.nombre}
-          onChange={handleChange}
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Nombre</label>
+            <input
+              type="text"
+              name="nombre"
+              placeholder="Nombre"
+              value={form.nombre}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.nombre ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            {renderError('nombre')}
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Cédula</label>
+            <input
+              type="text"
+              name="cedula"
+              placeholder="Cédula"
+              value={form.cedula}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.cedula ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            {renderError('cedula')}
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Teléfono</label>
+            <input
+              type="text"
+              name="telefono"
+              placeholder="Teléfono"
+              value={form.telefono}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.telefono ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            {renderError('telefono')}
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>WhatsApp</label>
+            <input
+              type="text"
+              name="whatsapp"
+              placeholder="WhatsApp"
+              value={form.whatsapp}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.whatsapp ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            {renderError('whatsapp')}
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Email</label>
+            <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.email ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            {renderError('email')}
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Dirección Casa</label>
+            <input
+              type="text"
+              name="direccion_casa"
+              placeholder="Dirección Casa"
+              value={form.direccion_casa}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Barrio</label>
+            <input
+              type="text"
+              name="barrio"
+              placeholder="Barrio"
+              value={form.barrio}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Dirección Trabajo</label>
+            <input
+              type="text"
+              name="direccion_trabajo"
+              placeholder="Dirección Trabajo"
+              value={form.direccion_trabajo}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Referencia Nombre</label>
+            <input
+              type="text"
+              name="referencia_nombre"
+              placeholder="Referencia Nombre"
+              value={form.referencia_nombre}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Referencia Teléfono</label>
+            <input
+              type="text"
+              name="referencia_telefono"
+              placeholder="Referencia Teléfono"
+              value={form.referencia_telefono}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.referencia_telefono ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            {renderError('referencia_telefono')}
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Referencia Parentesco</label>
+            <select
+              name="referencia_parentesco"
+              value={form.referencia_parentesco}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            >
+              <option value="">Seleccionar parentesco</option>
+              {opcionesParentesco.map(opcion => (
+                <option key={opcion} value={opcion}>{opcion}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 'clamp(10px, 1.8vw, 12px)', color: '#666', display: 'block', marginBottom: '4px' }}>Asignar Cobrador</label>
+            <select
+              name="cobrador_id"
+              value={form.cobrador_id}
+              onChange={handleChange}
+              style={{ width: '100%', padding: 'clamp(6px, 1.5vw, 8px)', fontSize: 'clamp(12px, 2vw, 14px)', border: errors.cobrador_id ? '1px solid #dc3545' : '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+            >
+              <option value="">Asignar cobrador</option>
+              {cobradores.map(c => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </select>
+            {renderError('cobrador_id')}
+          </div>
+        </div>
         
-        <input
-          type="text"
-          name="cedula"
-          placeholder="Cédula"
-          value={form.cedula}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="telefono"
-          placeholder="Teléfono"
-          value={form.telefono}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="whatsapp"
-          placeholder="WhatsApp"
-          value={form.whatsapp}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="email"
-          name="email"
-          placeholder="Email"
-          value={form.email}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="direccion_casa"
-          placeholder="Dirección Casa"
-          value={form.direccion_casa}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="barrio"
-          placeholder="Barrio"
-          value={form.barrio}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="direccion_trabajo"
-          placeholder="Dirección Trabajo"
-          value={form.direccion_trabajo}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="referencia_nombre"
-          placeholder="Referencia Nombre"
-          value={form.referencia_nombre}
-          onChange={handleChange}
-        />
-        
-        <input
-          type="text"
-          name="referencia_telefono"
-          placeholder="Referencia Teléfono"
-          value={form.referencia_telefono}
-          onChange={handleChange}
-        />
-        
-        <select
-          name="referencia_parentesco"
-          value={form.referencia_parentesco}
-          onChange={handleChange}
-        >
-          <option value="">Seleccionar parentesco</option>
-          {opcionesParentesco.map(opcion => (
-            <option key={opcion} value={opcion}>{opcion}</option>
-          ))}
-        </select>
-        
-        <select
-          name="cobrador_id"
-          value={form.cobrador_id}
-          onChange={handleChange}
-        >
-          <option value="">Asignar cobrador</option>
-          {cobradores.map(c => (
-            <option key={c.id} value={c.id}>{c.nombre}</option>
-          ))}
-        </select>
-        
-        {editId ? (
-          <>
-            <button onClick={guardarEdicion}>Guardar</button>
-            <button onClick={resetForm}>Cancelar</button>
-          </>
-        ) : (
-          <button onClick={crearDeudor}>Crear Deudor</button>
-        )}
+        <div style={{ marginTop: '15px' }}>
+          {editId ? (
+            <>
+              <button onClick={guardarEdicion} style={{ marginRight: '10px' }}>Guardar</button>
+              <button onClick={resetForm}>Cancelar</button>
+            </>
+          ) : (
+            <button onClick={crearDeudor}>Crear Deudor</button>
+          )}
+        </div>
       </div>
 
       <table border="1" cellPadding="5" style={{ width: '100%', borderCollapse: 'collapse' }}>

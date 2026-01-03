@@ -4,10 +4,10 @@ import {
   generarCronogramaPagos, 
   consolidateLoanState, 
   calcularMontoCuota,
-  calcularTotalAPagar,
   esDiaHabil,
   obtenerFestivos
 } from '../../utils/loanUtils'
+import { validarSoloNumeros } from '../../utils/validations'
 
 const PrestamosManager = () => {
   const [prestamos, setPrestamos] = useState([])
@@ -65,6 +65,7 @@ const PrestamosManager = () => {
     const { data, error } = await supabase
       .from('cobradores')
       .select('*')
+      .eq('active', true)
       .order('nombre')
     if (error) console.error(error)
     else setCobradores(data)
@@ -84,22 +85,11 @@ const PrestamosManager = () => {
 
   // Obtener fecha actual en zona horaria de Colombia (UTC-5)
   const obtenerFechaColombiaHoy = () => {
-    const ahora = new Date()
     // Ajustar a zona horaria de Colombia (UTC-5)
-    const colombiaOffset = -5 * 60 // -5 horas en minutos
-    const utc = ahora.getTime() + (ahora.getTimezoneOffset() * 60000)
-    const fechaColombia = new Date(utc + (colombiaOffset * 60000))
+    // Restamos 5 horas al tiempo UTC actual para obtener la hora en Colombia
+    const colombiaOffset = -5 * 60 * 60 * 1000 // -5 horas en milisegundos
+    const fechaColombia = new Date(Date.now() + colombiaOffset)
     return fechaColombia.toISOString().split('T')[0] // Formato YYYY-MM-DD
-  }
-
-  // Convertir fecha de dd/mm/yyyy a yyyy-mm-dd para input date
-  const convertirFechaParaInput = (fechaDDMMYYYY) => {
-    if (!fechaDDMMYYYY) return ''
-    const partes = fechaDDMMYYYY.split('/')
-    if (partes.length === 3) {
-      return `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`
-    }
-    return fechaDDMMYYYY
   }
 
   // Convertir fecha de yyyy-mm-dd a dd/mm/yyyy para mostrar
@@ -146,31 +136,6 @@ const PrestamosManager = () => {
   }
 
   // Validaciones de campos específicos
-  const validarEmail = (email) => {
-    if (!email) return null
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email) ? null : 'Email inválido'
-  }
-
-  const validarTelefonoMovilColombia = (telefono) => {
-    if (!telefono) return null
-    // Teléfonos móviles de Colombia: 10 dígitos, empiezan con 3
-    const telefonoRegex = /^3\d{9}$/
-    return telefonoRegex.test(telefono) ? null : 'Teléfono móvil debe tener 10 dígitos y empezar con 3'
-  }
-
-  const validarSoloNumeros = (valor) => {
-    if (!valor) return null
-    const numeroRegex = /^\d+$/
-    return numeroRegex.test(valor) ? null : 'Solo se permiten números'
-  }
-
-  const validarAlfanumerico = (valor) => {
-    if (!valor) return null
-    const alfanumericoRegex = /^[a-zA-Z0-9\s]+$/
-    return alfanumericoRegex.test(valor) ? null : 'Solo se permiten letras, números y espacios'
-  }
-
   const handleChange = (e) => {
     const { name, value } = e.target
     const newForm = { ...form, [name]: value }
@@ -218,6 +183,7 @@ const PrestamosManager = () => {
     })
     setEditId(null)
     setErrors({})
+    setCronogramaVisible(null) // Limpiar cronograma visible
   }
 
   const toggleCronograma = (prestamoId) => {
@@ -239,6 +205,12 @@ const PrestamosManager = () => {
       if (errorFecha) newErrors.fecha_inicio = errorFecha
     }
 
+    // Validar monto
+    if (form.monto) {
+      const errorMonto = validarSoloNumeros(form.monto)
+      if (errorMonto) newErrors.monto = errorMonto
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -258,7 +230,7 @@ const PrestamosManager = () => {
       }
 
       // Obtener sesión para user_id
-      const { data: session } = await supabase.auth.getSession()
+      await supabase.auth.getSession()
 
       // Calcular valores automáticamente
       const calculo = calcularMontoCuota(parseFloat(form.monto), form.frecuencia_pago)
@@ -289,7 +261,7 @@ const PrestamosManager = () => {
       prestamoData.cronograma_pagos = cronograma
       prestamoData.pagos_realizados = []
 
-      const { error } = await supabase.from('prestamos').insert([prestamoData])
+      const { data: nuevoPrestamo, error } = await supabase.from('prestamos').insert([prestamoData]).select().single()
       
       if (error) {
         console.error('Error creando préstamo:', error)
@@ -297,7 +269,11 @@ const PrestamosManager = () => {
       } else {
         alert('Préstamo creado exitosamente con cronograma automático')
         resetForm()
-        fetchPrestamos()
+        await fetchPrestamos() // Esperar a que se actualice la lista
+        // Mostrar automáticamente el cronograma del préstamo recién creado
+        if (nuevoPrestamo && nuevoPrestamo.id) {
+          setCronogramaVisible(nuevoPrestamo.id)
+        }
       }
     } catch (err) {
       console.error('Error:', err)
@@ -372,19 +348,35 @@ const PrestamosManager = () => {
   }
 
   return (
-    <div>
-      <h2>Gestión de Préstamos</h2>
+    <div style={{
+      padding: 'clamp(10px, 3vw, 20px)',
+      maxWidth: '1200px',
+      margin: '0 auto',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      <h2 style={{
+        fontSize: 'clamp(20px, 4vw, 24px)',
+        color: '#2c3e50',
+        marginBottom: 'clamp(15px, 3vw, 20px)'
+      }}>Gestión de Préstamos</h2>
       
       {/* Panel de información */}
       <div style={{ 
-        marginBottom: '20px', 
-        padding: '15px', 
+        marginBottom: 'clamp(15px, 3vw, 20px)', 
+        padding: 'clamp(10px, 3vw, 15px)', 
         backgroundColor: '#e3f2fd', 
-        borderRadius: '5px',
+        borderRadius: '8px',
         border: '1px solid #2196f3'
       }}>
-        <h4>📋 Lógica de Negocio PrestaYa</h4>
-        <ul style={{ margin: '10px 0', paddingLeft: '20px', fontSize: '14px' }}>
+        <h4 style={{
+          fontSize: 'clamp(16px, 3vw, 18px)',
+          marginBottom: '10px'
+        }}>📋 Lógica de Negocio PrestaYa</h4>
+        <ul style={{ 
+          margin: '10px 0', 
+          paddingLeft: 'clamp(15px, 4vw, 20px)', 
+          fontSize: 'clamp(12px, 2.5vw, 14px)'
+        }}>
           <li><strong>Modalidad Diaria:</strong> 24 pagos en días hábiles (Lunes a Sábado)</li>
           <li><strong>Modalidad Semanal:</strong> 4 pagos semanales el mismo día de la semana</li>
           <li><strong>Interés:</strong> 20% fijo sobre el monto prestado</li>
@@ -393,8 +385,19 @@ const PrestamosManager = () => {
         </ul>
       </div>
 
-      <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '5px' }}>
-        <h3>{editId ? '✏️ Editar Préstamo' : '➕ Nuevo Préstamo'}</h3>
+      <div style={{ 
+        marginBottom: 'clamp(15px, 3vw, 20px)', 
+        padding: 'clamp(10px, 3vw, 15px)', 
+        border: '1px solid #ccc', 
+        borderRadius: '8px',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      }}>
+        <h3 style={{
+          fontSize: 'clamp(18px, 3.5vw, 20px)',
+          color: '#2c3e50',
+          marginBottom: 'clamp(10px, 2vw, 15px)'
+        }}>{editId ? '✏️ Editar Préstamo' : '➕ Nuevo Préstamo'}</h3>
         
         {editId && (
           <div style={{ 
@@ -411,14 +414,26 @@ const PrestamosManager = () => {
           </div>
         )}
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+          gap: 'clamp(8px, 2vw, 12px)', 
+          marginBottom: 'clamp(10px, 2vw, 15px)'
+        }}>
           <div>
             <select 
               name="deudor_id" 
               value={form.deudor_id} 
               onChange={handleChange} 
               required
-              style={{ width: '100%', border: errors.deudor_id ? '2px solid #dc3545' : '1px solid #ccc' }}
+              style={{ 
+                width: '100%', 
+                padding: 'clamp(6px, 1.5vw, 8px)',
+                fontSize: 'clamp(12px, 2vw, 14px)',
+                border: errors.deudor_id ? '2px solid #dc3545' : '1px solid #ccc',
+                borderRadius: '4px',
+                boxSizing: 'border-box'
+              }}
             >
               <option value="">Seleccionar Deudor *</option>
               {deudores.map(d => (
@@ -434,7 +449,14 @@ const PrestamosManager = () => {
               value={form.cobrador_id} 
               onChange={handleChange}
               required
-              style={{ width: '100%', border: errors.cobrador_id ? '2px solid #dc3545' : '1px solid #ccc' }}
+              style={{ 
+                width: '100%', 
+                padding: 'clamp(6px, 1.5vw, 8px)',
+                fontSize: 'clamp(12px, 2vw, 14px)',
+                border: errors.cobrador_id ? '2px solid #dc3545' : '1px solid #ccc',
+                borderRadius: '4px',
+                boxSizing: 'border-box'
+              }}
             >
               <option value="">Seleccionar Cobrador *</option>
               {cobradores.map(c => (
@@ -445,7 +467,12 @@ const PrestamosManager = () => {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', color: '#666', display: 'block' }}>
+            <label style={{ 
+              fontSize: 'clamp(10px, 1.8vw, 12px)', 
+              color: '#666', 
+              display: 'block',
+              marginBottom: '4px'
+            }}>
               Fecha de Otorgamiento (Zona horaria Colombia)
             </label>
             <input
@@ -458,11 +485,19 @@ const PrestamosManager = () => {
               title={`Fecha de Otorgamiento del Crédito - Hoy: ${convertirFechaParaMostrar(obtenerFechaColombiaHoy())}`}
               style={{ 
                 width: '100%', 
+                padding: 'clamp(6px, 1.5vw, 8px)',
+                fontSize: 'clamp(12px, 2vw, 14px)',
                 border: errors.fecha_inicio ? '2px solid #dc3545' : '1px solid #ccc',
-                backgroundColor: editId ? '#e9ecef' : 'white'
+                borderRadius: '4px',
+                backgroundColor: editId ? '#e9ecef' : 'white',
+                boxSizing: 'border-box'
               }}
             />
-            <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+            <div style={{ 
+              fontSize: 'clamp(9px, 1.5vw, 10px)', 
+              color: '#888', 
+              marginTop: '2px' 
+            }}>
               Hoy: {convertirFechaParaMostrar(obtenerFechaColombiaHoy())}
             </div>
             {renderError('fecha_inicio')}
@@ -481,8 +516,12 @@ const PrestamosManager = () => {
               step="1000"
               style={{ 
                 width: '100%', 
+                padding: 'clamp(6px, 1.5vw, 8px)',
+                fontSize: 'clamp(12px, 2vw, 14px)',
                 border: errors.monto ? '2px solid #dc3545' : '1px solid #ccc',
-                backgroundColor: editId ? '#e9ecef' : 'white'
+                borderRadius: '4px',
+                backgroundColor: editId ? '#e9ecef' : 'white',
+                boxSizing: 'border-box'
               }}
             />
             {editId && (

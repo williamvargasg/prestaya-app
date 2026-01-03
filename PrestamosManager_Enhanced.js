@@ -66,6 +66,7 @@ const PrestamosManager = () => {
     const { data, error } = await supabase
       .from('cobradores')
       .select('*')
+      .eq('active', true)
       .order('nombre')
     if (error) console.error(error)
     else setCobradores(data)

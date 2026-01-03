@@ -1,50 +1,135 @@
 // Utilidades para la lógica de préstamos PrestaYa
 // Lógica de negocio: Días hábiles Lunes-Sábado, NO domingos ni festivos
 
-// ⚠️ ACTUALIZAR ANUALMENTE: Festivos de Colombia
-// Última actualización: Enero 2025
-// Próxima actualización requerida: Enero 2026
-const FESTIVOS_COLOMBIA = [
-  // 2024
-  '2024-01-01', // Año Nuevo
-  '2024-01-08', // Reyes Magos
-  '2024-03-25', // San José
-  '2024-03-28', // Jueves Santo
-  '2024-03-29', // Viernes Santo
-  '2024-05-01', // Día del Trabajo
-  '2024-05-13', // Ascensión
-  '2024-06-03', // Corpus Christi
-  '2024-06-10', // Sagrado Corazón
-  '2024-07-01', // San Pedro y San Pablo
-  '2024-07-20', // Independencia
-  '2024-08-07', // Batalla de Boyacá
-  '2024-08-19', // Asunción
-  '2024-10-14', // Día de la Raza
-  '2024-11-04', // Todos los Santos
-  '2024-11-11', // Independencia de Cartagena
-  '2024-12-08', // Inmaculada Concepción
-  '2024-12-25', // Navidad
+// ⚠️ CÁLCULO AUTOMÁTICO DE FESTIVOS
+// Implementación de la Ley Emiliani (Ley 51 de 1983) y cálculo de Pascua
+// No requiere actualización manual anual.
+
+const CACHE_FESTIVOS = new Map();
+
+/**
+ * Calcula la fecha del Domingo de Pascua para un año dado
+ * Algoritmo de Meeus/Jones/Butcher
+ */
+const calcularPascua = (year) => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month, day);
+};
+
+/**
+ * Mueve una fecha al siguiente lunes si no es lunes (Ley Emiliani)
+ */
+const moverALunes = (fecha) => {
+  const diaSemana = fecha.getDay();
+  if (diaSemana === 1) return fecha; // Ya es lunes
   
-  // 2025
-  '2025-01-01', // Año Nuevo
-  '2025-01-06', // Reyes Magos
-  '2025-03-24', // San José
-  '2025-04-17', // Jueves Santo
-  '2025-04-18', // Viernes Santo
-  '2025-05-01', // Día del Trabajo
-  '2025-06-02', // Ascensión
-  '2025-06-23', // Corpus Christi
-  '2025-06-30', // Sagrado Corazón
-  '2025-06-29', // San Pedro y San Pablo
-  '2025-07-20', // Independencia
-  '2025-08-07', // Batalla de Boyacá
-  '2025-08-18', // Asunción
-  '2025-10-13', // Día de la Raza
-  '2025-11-03', // Todos los Santos
-  '2025-11-17', // Independencia de Cartagena
-  '2025-12-08', // Inmaculada Concepción
-  '2025-12-25', // Navidad
-];
+  const diasParaLunes = diaSemana === 0 ? 1 : 8 - diaSemana;
+  const nuevaFecha = new Date(fecha);
+  nuevaFecha.setDate(fecha.getDate() + diasParaLunes);
+  return nuevaFecha;
+};
+
+/**
+ * Obtiene los festivos de Colombia para un año específico
+ */
+const getColombianHolidays = (year) => {
+  if (CACHE_FESTIVOS.has(year)) {
+    return CACHE_FESTIVOS.get(year);
+  }
+
+  const holidays = [];
+  const addDate = (month, day) => holidays.push(new Date(year, month, day));
+  
+  // 1. Festivos Fijos (No se mueven)
+  addDate(0, 1);   // Año Nuevo
+  addDate(4, 1);   // Día del Trabajo
+  addDate(6, 20);  // Independencia
+  addDate(7, 7);   // Batalla de Boyacá
+  addDate(11, 8);  // Inmaculada Concepción
+  addDate(11, 25); // Navidad
+
+  // 2. Festivos Ley Emiliani (Se mueven al lunes)
+  const emilianiDates = [
+    new Date(year, 0, 6),   // Reyes Magos
+    new Date(year, 2, 19),  // San José
+    new Date(year, 5, 29),  // San Pedro y San Pablo
+    new Date(year, 7, 15),  // Asunción
+    new Date(year, 9, 12),  // Día de la Raza
+    new Date(year, 10, 1),  // Todos los Santos
+    new Date(year, 10, 11), // Independencia de Cartagena
+  ];
+
+  // 3. Festivos Religiosos (Basados en Pascua, se mueven al lunes)
+  const pascua = calcularPascua(year);
+  const sumarDias = (date, days) => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  };
+
+  // Jueves y Viernes Santo (Fijos respecto a Pascua, no se mueven a lunes)
+  holidays.push(sumarDias(pascua, -3)); // Jueves Santo
+  holidays.push(sumarDias(pascua, -2)); // Viernes Santo
+
+  // Ascensión, Corpus Christi, Sagrado Corazón (Se mueven a lunes)
+  // Ascensión: Pascua + 39 días (Jueves) -> Lunes (+43)
+  // Corpus Christi: Pascua + 60 días (Jueves) -> Lunes (+64)
+  // Sagrado Corazón: Pascua + 68 días (Viernes) -> Lunes (+71)
+  
+  emilianiDates.push(sumarDias(pascua, 43 - (moverALunes(sumarDias(pascua, 39)).getDay() === 1 ? 4 : 0))); // Ajuste base
+  // Nota: La lógica simplificada es: Calcular la fecha real y luego aplicar moverALunes.
+  // Pero para Pascua, las fechas base son Jueves/Viernes, así que siempre se mueven.
+  // Ascensión (Jueves) + 40 días desde domingo de resurrección? No, 40 días despues (contando).
+  // Jueves Santo (-3), Domingo (0), Ascensión (Jueves +39).
+  // Simplemente agreguemos las fechas base a la lista Emiliani y dejemos que moverALunes lo maneje.
+  
+  // Reiniciamos lista Emiliani para hacerlo más claro
+  const emilianiBase = [
+    new Date(year, 0, 6),   // Reyes Magos
+    new Date(year, 2, 19),  // San José
+    new Date(year, 5, 29),  // San Pedro y San Pablo
+    new Date(year, 7, 15),  // Asunción
+    new Date(year, 9, 12),  // Día de la Raza
+    new Date(year, 10, 1),  // Todos los Santos
+    new Date(year, 10, 11), // Independencia de Cartagena
+    sumarDias(pascua, 39),  // Ascensión (Jueves)
+    sumarDias(pascua, 60),  // Corpus Christi (Jueves)
+    sumarDias(pascua, 68)   // Sagrado Corazón (Viernes)
+  ];
+
+  emilianiBase.forEach(date => {
+    holidays.push(moverALunes(date));
+  });
+
+  // Convertir a strings YYYY-MM-DD y ordenar
+  const holidayStrings = holidays
+    .map(d => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    })
+    .sort();
+
+  // Eliminar duplicados si los hubiera (raro en este contexto pero posible)
+  const uniqueHolidays = [...new Set(holidayStrings)];
+  
+  CACHE_FESTIVOS.set(year, uniqueHolidays);
+  return uniqueHolidays;
+};
 
 /**
  * Verifica si una fecha es día hábil para PrestaYa
@@ -57,7 +142,6 @@ export const esDiaHabil = (fecha) => {
   let fechaStr;
   
   if (typeof fecha === 'string') {
-    // Si es string en formato YYYY-MM-DD, crear fecha sin problemas de zona horaria
     if (fecha.includes('-') && fecha.length === 10) {
       const partes = fecha.split('-');
       date = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
@@ -67,7 +151,6 @@ export const esDiaHabil = (fecha) => {
       fechaStr = date.toISOString().split('T')[0];
     }
   } else {
-    // Si es objeto Date, convertir a string YYYY-MM-DD
     date = new Date(fecha);
     const año = date.getFullYear();
     const mes = String(date.getMonth() + 1).padStart(2, '0');
@@ -75,15 +158,12 @@ export const esDiaHabil = (fecha) => {
     fechaStr = `${año}-${mes}-${dia}`;
   }
   
-  // Verificar si es domingo (0)
-  if (date.getDay() === 0) {
-    return false;
-  }
+  if (date.getDay() === 0) return false;
   
-  // Verificar si es festivo
-  if (FESTIVOS_COLOMBIA.includes(fechaStr)) {
-    return false;
-  }
+  const year = date.getFullYear();
+  const festivosAño = getColombianHolidays(year);
+  
+  if (festivosAño.includes(fechaStr)) return false;
   
   return true;
 };
@@ -104,11 +184,16 @@ export const siguienteDiaHabil = (fecha) => {
 };
 
 /**
- * Obtiene la lista actual de festivos
+ * Obtiene la lista actual de festivos (Año actual y siguiente)
  * @returns {Array} Lista de festivos en formato YYYY-MM-DD
  */
 export const obtenerFestivos = () => {
-  return [...FESTIVOS_COLOMBIA];
+  const year = new Date().getFullYear();
+  return [
+    ...getColombianHolidays(year),
+    ...getColombianHolidays(year + 1),
+    ...getColombianHolidays(year + 2) // Incluimos un año más por seguridad
+  ];
 };
 
 /**
@@ -119,24 +204,22 @@ export const verificarCobertureFestivos = () => {
   const añoActual = new Date().getFullYear();
   const añoSiguiente = añoActual + 1;
   
-  const festivosAñoActual = FESTIVOS_COLOMBIA.filter(f => f.startsWith(añoActual.toString()));
-  const festivosAñoSiguiente = FESTIVOS_COLOMBIA.filter(f => f.startsWith(añoSiguiente.toString()));
+  const festivosAñoActual = getColombianHolidays(añoActual);
+  const festivosAñoSiguiente = getColombianHolidays(añoSiguiente);
   
   return {
     añoActual: {
       año: añoActual,
-      cubierto: festivosAñoActual.length > 0,
+      cubierto: true, // Siempre true con algoritmo
       cantidad: festivosAñoActual.length
     },
     añoSiguiente: {
       año: añoSiguiente,
-      cubierto: festivosAñoSiguiente.length > 0,
+      cubierto: true, // Siempre true con algoritmo
       cantidad: festivosAñoSiguiente.length
     },
-    requiereActualizacion: festivosAñoSiguiente.length === 0,
-    mensaje: festivosAñoSiguiente.length === 0 
-      ? `⚠️ URGENTE: Actualizar festivos para ${añoSiguiente}` 
-      : `✅ Festivos actualizados hasta ${añoSiguiente}`
+    requiereActualizacion: false,
+    mensaje: `✅ Festivos calculados automáticamente (Algoritmo Ley 51)`
   };
 };
 
@@ -216,7 +299,10 @@ export const calcularTotalAPagar = (monto) => {
  * @returns {Object} Información de multas
  */
 export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
-  const { cronograma_pagos = [], frecuencia_pago } = prestamo;
+  const { cronograma_pagos = [], frecuencia_pago, modalidad_pago } = prestamo;
+  
+  // Usar frecuencia_pago o modalidad_pago (compatibilidad con ambos nombres)
+  const modalidad = frecuencia_pago || modalidad_pago;
   const fechaHoy = fechaActual.toISOString().split('T')[0];
   
   let multaTotal = 0;
@@ -227,7 +313,7 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
   const mesActual = fechaActual.getMonth();
   const añoActual = fechaActual.getFullYear();
   
-  if (frecuencia_pago === 'semanal') {
+  if (modalidad === 'semanal') {
     // LÓGICA SEMANAL: Multa inmediata al día siguiente del vencimiento
     cronograma_pagos.forEach(cuota => {
       if (cuota.estado === 'PENDIENTE' && cuota.fecha_vencimiento < fechaHoy) {
@@ -248,7 +334,7 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
       }
     });
     
-  } else if (frecuencia_pago === 'diario') {
+  } else if (modalidad === 'diario') {
     // LÓGICA DIARIA: Más compleja con escalamiento y control mensual
     
     // 1. Identificar períodos de atraso (consecutivos o no)
@@ -374,10 +460,13 @@ export const calcularCierreAutomatico = (fecha = new Date()) => {
  * @returns {Array} Array de objetos con las fechas y montos de pago
  */
 export const generarCronogramaPagos = (prestamo) => {
-  const { fecha_inicio, total_a_pagar, frecuencia_pago } = prestamo;
+  const { fecha_inicio, total_a_pagar, frecuencia_pago, modalidad_pago } = prestamo;
+  
+  // Usar frecuencia_pago o modalidad_pago (compatibilidad con ambos nombres)
+  const modalidad = frecuencia_pago || modalidad_pago;
   
   // Validaciones de entrada
-  if (!fecha_inicio || !total_a_pagar || !frecuencia_pago) {
+  if (!fecha_inicio || !total_a_pagar || !modalidad) {
     throw new Error('Faltan datos requeridos para generar el cronograma');
   }
 
@@ -385,8 +474,8 @@ export const generarCronogramaPagos = (prestamo) => {
     throw new Error('El total a pagar debe ser mayor a 0');
   }
 
-  if (!['diario', 'semanal'].includes(frecuencia_pago)) {
-    throw new Error('Frecuencia de pago debe ser "diario" o "semanal"');
+  if (!['diario', 'semanal'].includes(modalidad)) {
+    throw new Error('Modalidad de pago debe ser "diario" o "semanal"');
   }
 
   // Validar que la fecha de inicio sea día hábil (usar string)
@@ -394,17 +483,19 @@ export const generarCronogramaPagos = (prestamo) => {
     throw new Error('La fecha de inicio debe ser un día hábil (Lunes a Sábado, no festivos)');
   }
   
-  const fechaInicio = new Date(fecha_inicio);
+  // Crear fecha sin problemas de zona horaria
+  const partes = fecha_inicio.split('-');
+  const fechaInicio = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
 
   const cronograma = [];
   
-  if (frecuencia_pago === 'diario') {
-    // 24 pagos en días hábiles (Lunes a Sábado, excluyendo festivos)
+  if (modalidad === 'diario') {
+    // 24 pagos en días hábiles consecutivos (Lunes a Sábado, excluyendo festivos)
     const montoCuota = Math.round(total_a_pagar / 24);
     let fechaActual = new Date(fechaInicio);
     
     for (let i = 1; i <= 24; i++) {
-      // Buscar el siguiente día hábil
+      // Buscar el siguiente día hábil desde la fecha actual
       fechaActual = siguienteDiaHabil(fechaActual);
       
       cronograma.push({
@@ -416,8 +507,11 @@ export const generarCronogramaPagos = (prestamo) => {
         dias_atraso: 0,
         fecha_pago_real: null
       });
+      
+      // fechaActual ya contiene la fecha del pago actual
+      // En la siguiente iteración, siguienteDiaHabil buscará el próximo día hábil desde esta fecha
     }
-  } else if (frecuencia_pago === 'semanal') {
+  } else if (modalidad === 'semanal') {
     // 4 pagos semanales en el mismo día de la semana
     const montoCuota = Math.round(total_a_pagar / 4);
     
@@ -527,8 +621,19 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
   });
 
   // 6. Calcular total a pagar hoy (incluyendo multas)
+  // Solo mostrar monto si es exactamente el día de cobro y después de las 12:01 AM
   const totalMultas = multasInfo.multa_total;
-  const totalAPagarHoy = montoAtrasado + montoVenceHoy + totalMultas;
+  const ahora = new Date();
+  const horaActual = ahora.getHours() * 60 + ahora.getMinutes(); // minutos desde medianoche
+  const esDespuesDe1201AM = horaActual >= 1; // 12:01 AM = 1 minuto después de medianoche
+  
+  let totalAPagarHoy = 0;
+  if (esDespuesDe1201AM) {
+    totalAPagarHoy = montoAtrasado + montoVenceHoy + totalMultas;
+  } else {
+    // Solo mostrar montos atrasados y multas, no cuotas que vencen hoy
+    totalAPagarHoy = montoAtrasado + totalMultas;
+  }
 
   // 7. Determinar estado general del préstamo
   let estadoPrestamo;
@@ -593,7 +698,7 @@ export const calcularEstadisticasCartera = (prestamos) => {
     prestamos_activos: prestamosConsolidados.filter(p => p.estado === 'ACTIVO').length,
     prestamos_en_mora: prestamosConsolidados.filter(p => p.estado === 'MORA').length,
     prestamos_pagados: prestamosConsolidados.filter(p => p.estado === 'PAGADO').length,
-    monto_total_prestado: prestamosConsolidados.reduce((sum, p) => sum + p.monto_prestado, 0),
+    monto_total_prestado: prestamosConsolidados.reduce((sum, p) => sum + (p.monto || 0), 0),
     monto_total_por_cobrar: prestamosConsolidados.reduce((sum, p) => sum + p.total_a_pagar, 0),
     monto_total_cobrado: prestamosConsolidados.reduce((sum, p) => sum + (p.consolidado?.total_pagado || 0), 0),
     monto_en_mora: prestamosConsolidados.reduce((sum, p) => sum + (p.consolidado?.monto_atrasado || 0), 0),
