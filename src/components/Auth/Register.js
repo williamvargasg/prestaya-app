@@ -82,7 +82,7 @@ const Register = ({ onBackToLogin }) => {
     try {
       // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password,
         options: {
           data: {
