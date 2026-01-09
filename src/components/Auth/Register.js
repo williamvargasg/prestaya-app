@@ -98,19 +98,18 @@ const Register = ({ onBackToLogin }) => {
 
       // 2. Crear registro en la tabla correspondiente
       if (formData.tipoUsuario === 'cobrador') {
-        const { error: cobradorError } = await supabase
-          .from('cobradores')
-          .insert({
-            nombre: formData.nombre,
-            email: formData.email,
-            zona_id: parseInt(formData.zonaId),
-            telefono: formData.telefono, // Teléfono es obligatorio y fundamental
-            active: true,
-            user_id: authData.user?.id
-          })
+        // Usamos RPC (Función almacenada) para evitar errores de caché de esquema en Supabase
+        const { error: rpcError } = await supabase.rpc('registrar_cobrador', {
+          nombre_input: formData.nombre,
+          email_input: formData.email,
+          zona_id_input: parseInt(formData.zonaId),
+          telefono_input: formData.telefono,
+          user_id_input: authData.user?.id
+        });
 
-        if (cobradorError) {
-          throw cobradorError
+        if (rpcError) {
+          console.error('Error RPC registro cobrador:', rpcError);
+          throw rpcError;
         }
       } else if (formData.tipoUsuario === 'administrador') {
         const { error: adminError } = await supabase

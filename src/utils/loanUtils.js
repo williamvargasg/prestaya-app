@@ -573,8 +573,11 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
   }
 
   // 4. Detectar mora - marcar cuotas vencidas como ATRASADO
-  // Asegurarse de que fechaActual sea un objeto Date
-  const fechaObj = fechaActual instanceof Date ? fechaActual : new Date(fechaActual);
+  // Asegurarse de que fechaActual sea un objeto Date válido
+  let fechaObj = fechaActual instanceof Date ? fechaActual : new Date(fechaActual);
+  if (isNaN(fechaObj.getTime())) {
+      fechaObj = new Date(); // Fallback a fecha actual si la fecha proporcionada es inválida
+  }
   const fechaHoy = fechaObj.toISOString().split('T')[0];
   let diasMora = 0;
   let cuotasAtrasadas = 0;
