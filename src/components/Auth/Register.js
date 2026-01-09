@@ -98,18 +98,35 @@ const Register = ({ onBackToLogin }) => {
 
       // 2. Crear registro en la tabla correspondiente
       if (formData.tipoUsuario === 'cobrador') {
-        // Usamos RPC (Función almacenada) para evitar errores de caché de esquema en Supabase
-        const { error: rpcError } = await supabase.rpc('registrar_cobrador', {
-          nombre_input: formData.nombre,
-          email_input: formData.email,
-          zona_id_input: parseInt(formData.zonaId),
-          telefono_input: formData.telefono,
-          user_id_input: authData.user?.id
-        });
+        // Intento 1: Inserción directa (Estándar)
+        const { error: insertError } = await supabase
+          .from('cobradores')
+          .insert({
+             nombre: formData.nombre,
+             email: formData.email,
+             zona_id: parseInt(formData.zonaId),
+             telefono: formData.telefono,
+             active: true,
+             user_id: authData.user?.id
+          });
 
-        if (rpcError) {
-          console.error('Error RPC registro cobrador:', rpcError);
-          throw rpcError;
+        if (insertError) {
+           console.warn('Fallo inserción directa, intentando RPC...', insertError);
+           
+           // Intento 2: Fallback a RPC si falla la inserción directa
+           const { error: rpcError } = await supabase.rpc('registrar_cobrador', {
+             nombre_input: formData.nombre,
+             email_input: formData.email,
+             zona_id_input: parseInt(formData.zonaId),
+             telefono_input: formData.telefono,
+             user_id_input: authData.user?.id
+           });
+
+           if (rpcError) {
+             console.error('Error RPC registro cobrador:', rpcError);
+             // Lanzar el error original si ambos fallan, para que el usuario sepa qué pasó
+             throw insertError; 
+           }
         }
       } else if (formData.tipoUsuario === 'administrador') {
         const { error: adminError } = await supabase
