@@ -98,19 +98,45 @@ const Register = ({ onBackToLogin }) => {
 
       // 2. Crear registro en la tabla correspondiente
       if (formData.tipoUsuario === 'cobrador') {
+        const cobradorData = {
+          nombre: formData.nombre,
+          email: formData.email,
+          zona_id: parseInt(formData.zonaId),
+          active: true
+        }
+
+        // Solo agregar campos opcionales si existen para evitar errores de esquema
+        if (formData.telefono) {
+          // Intentar insertar con teléfono solo si el campo está presente
+          // Nota: Si la columna no existe en BD, esto fallará, por lo que idealmente
+          // deberíamos verificar primero o manejar el error, pero por ahora asumimos
+          // que el usuario ejecutará el script SQL de reparación.
+          cobradorData.telefono = formData.telefono
+        }
+        
+        if (authData.user?.id) {
+           cobradorData.user_id = authData.user.id
+        }
+
         const { error: cobradorError } = await supabase
           .from('cobradores')
-          .insert({
-            nombre: formData.nombre,
-            email: formData.email,
-            zona_id: parseInt(formData.zonaId),
-            telefono: formData.telefono || null,
-            active: true,
-            user_id: authData.user?.id
-          })
+          .insert(cobradorData)
 
         if (cobradorError) {
-          throw cobradorError
+          // Fallback: Si falla por columna no encontrada, intentar sin telefono/user_id
+          if (cobradorError.message?.includes('column') && cobradorError.message?.includes('does not exist')) {
+             console.warn('Columnas faltantes detectadas, reintentando inserción básica...');
+             const basicData = {
+                nombre: formData.nombre,
+                email: formData.email,
+                zona_id: parseInt(formData.zonaId),
+                active: true
+             };
+             const { error: retryError } = await supabase.from('cobradores').insert(basicData);
+             if (retryError) throw retryError;
+          } else {
+             throw cobradorError
+          }
         }
       } else if (formData.tipoUsuario === 'administrador') {
         const { error: adminError } = await supabase

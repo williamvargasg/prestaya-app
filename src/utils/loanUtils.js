@@ -573,7 +573,9 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
   }
 
   // 4. Detectar mora - marcar cuotas vencidas como ATRASADO
-  const fechaHoy = fechaActual.toISOString().split('T')[0];
+  // Asegurarse de que fechaActual sea un objeto Date
+  const fechaObj = fechaActual instanceof Date ? fechaActual : new Date(fechaActual);
+  const fechaHoy = fechaObj.toISOString().split('T')[0];
   let diasMora = 0;
   let cuotasAtrasadas = 0;
   let montoAtrasado = 0;
@@ -589,7 +591,7 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
         // Calcular días de mora (solo para la cuota más antigua)
         if (diasMora === 0) {
           const fechaVenc = new Date(cuota.fecha_vencimiento);
-          const diferencia = fechaActual - fechaVenc;
+          const diferencia = fechaObj - fechaVenc;
           diasMora = Math.floor(diferencia / (1000 * 60 * 60 * 24));
         }
       } else if (cuota.fecha_vencimiento === fechaHoy) {
