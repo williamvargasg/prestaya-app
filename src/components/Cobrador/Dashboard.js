@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import MisDeudores from './MisDeudores'
-import RegistrarPagoMejorado from './RegistrarPagoMejorado'
 
 const Dashboard = () => {
   const [activeModule, setActiveModule] = useState('misDeudores')
@@ -9,8 +8,6 @@ const Dashboard = () => {
     switch (activeModule) {
       case 'misDeudores':
         return <MisDeudores />
-      case 'registrarPago':
-        return <RegistrarPagoMejorado />
       default:
         return <MisDeudores />
     }
@@ -57,8 +54,7 @@ const Dashboard = () => {
         boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
       }}>
         {[
-          { key: 'misDeudores', label: '👥 Mis Deudores', icon: '👥', description: 'Ver y gestionar deudores' },
-          { key: 'registrarPago', label: '💳 Registrar Pago', icon: '💳', description: 'Procesar nuevos pagos' }
+          { key: 'misDeudores', label: '👥 Mis Deudores', icon: '👥', description: 'Ver y gestionar deudores' }
         ].map(({ key, label, icon, description }) => (
           <button
             key={key}

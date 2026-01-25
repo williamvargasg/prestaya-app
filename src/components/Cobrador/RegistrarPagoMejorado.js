@@ -32,7 +32,7 @@ const RegistrarPagoMejorado = () => {
   // Métodos de pago disponibles
   const metodosPago = [
     { value: 'efectivo', label: 'Efectivo' },
-    { value: 'transferencia', label: 'Transferencia' },
+    { value: 'transferencia', label: 'Transferencia - Bre-b' },
     { value: 'nequi', label: 'Nequi' },
     { value: 'daviplata', label: 'Daviplata' },
     { value: 'bancolombia', label: 'Bancolombia' }
@@ -68,19 +68,38 @@ const RegistrarPagoMejorado = () => {
     }
   }, [prestamoId])
 
-  // Obtiene el ID del cobrador según el usuario autenticado
   useEffect(() => {
     const fetchCobradorId = async () => {
-      const session = await supabase.auth.getSession()
-      const email = session.data?.session?.user?.email
-      if (!email) return
+      const { data: sessionData } = await supabase.auth.getSession()
+      const userId = sessionData?.session?.user?.id
+      const email = sessionData?.session?.user?.email
+      if (!userId && !email) return
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('cobradores')
         .select('id')
-        .eq('email', email)
-        .single()
-      if (error) return
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if ((!data || error) && email) {
+        error = null
+        const { data: dataEmail, error: errorEmail } = await supabase
+          .from('cobradores')
+          .select('id')
+          .ilike('email', email.trim())
+          .order('id', { ascending: true })
+          .limit(1)
+
+        if (!errorEmail && dataEmail && dataEmail.length > 0) {
+          data = dataEmail[0]
+          error = null
+        } else {
+          data = null
+          error = errorEmail
+        }
+      }
+
+      if (error || !data) return
       setCobradorId(data.id)
     }
     fetchCobradorId()

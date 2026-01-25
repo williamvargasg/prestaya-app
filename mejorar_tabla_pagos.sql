@@ -35,6 +35,32 @@ ALTER TABLE pagos
 ADD CONSTRAINT pagos_estado_pago_check 
 CHECK (estado_pago IN ('completo', 'parcial', 'exceso', 'anulado'));
 
+ALTER TABLE public.pagos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Cobradores pueden insertar sus pagos" ON public.pagos
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.cobradores c
+            WHERE c.id = pagos.cobrador_id
+            AND c.user_id = auth.uid()
+            AND c.active = true
+        )
+    );
+
+CREATE POLICY "Cobradores pueden ver sus pagos" ON public.pagos
+    FOR SELECT
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.cobradores c
+            WHERE c.id = pagos.cobrador_id
+            AND c.user_id = auth.uid()
+            AND c.active = true
+        )
+    );
+
 -- Agregar índices para mejorar rendimiento
 CREATE INDEX IF NOT EXISTS idx_pagos_prestamo_id ON pagos(prestamo_id);
 CREATE INDEX IF NOT EXISTS idx_pagos_cobrador_id ON pagos(cobrador_id);

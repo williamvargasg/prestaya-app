@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../supabaseClient'
-import { obtenerProximoPago } from '../../utils/loanUtils'
-import { registerPayment } from '../../services/paymentService'
+import { obtenerProximoPago, consolidateLoanState } from '../../utils/loanUtils'
+import { registerPayment, getConsolidatedLoanInfo } from '../../services/paymentService'
 
 const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess }) => {
   const [monto, setMonto] = useState('')
@@ -9,10 +9,20 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
   const [notas, setNotas] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [cronograma, setCronograma] = useState([])
+  const [resultadoPago, setResultadoPago] = useState(null)
+  const [modo, setModo] = useState('formulario')
+
+  const formatearMonto = (valor) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0
+    }).format(valor || 0)
+  }
 
   useEffect(() => {
     if (isOpen && prestamo) {
-      // Pre-fill with recommended amount if available
       if (prestamo.proximoPago?.monto_total_recomendado) {
         setMonto(prestamo.proximoPago.monto_total_recomendado)
       } else {
@@ -21,10 +31,77 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
       setMetodoPago('efectivo')
       setNotas('')
       setError(null)
+      setResultadoPago(null)
+      setModo('formulario')
+      try {
+        const prestamoConsolidado = consolidateLoanState(prestamo, new Date())
+        setCronograma(prestamoConsolidado.cronograma_pagos || [])
+      } catch (e) {
+        console.error('Error consolidando préstamo en PaymentModal:', e)
+        setCronograma([])
+      }
     }
   }, [isOpen, prestamo])
 
   if (!isOpen || !prestamo) return null
+
+  const handleEnviarWhatsapp = () => {
+    try {
+      const telefono = prestamo.deudor.telefono || prestamo.deudor.whatsapp
+      if (!telefono) {
+        alert('El deudor no tiene número de WhatsApp registrado')
+        return
+      }
+
+      const numeroLimpio = telefono.replace(/[^\d]/g, '')
+      const numeroConCodigo = numeroLimpio.length === 10 ? `57${numeroLimpio}` : numeroLimpio
+
+      const pago = resultadoPago?.payment || null
+      const fechaPago = pago?.fecha_pago
+        ? new Date(pago.fecha_pago).toLocaleDateString('es-CO')
+        : new Date().toLocaleDateString('es-CO')
+      const montoPago = pago?.monto != null ? pago.monto : parseFloat(monto || 0)
+      const montoFormateado = new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        minimumFractionDigits: 0
+      }).format(montoPago || 0)
+
+      const saldoPendiente = prestamo.consolidado?.saldo_pendiente || 0
+      const saldoFormateado = new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        minimumFractionDigits: 0
+      }).format(saldoPendiente)
+
+      const mensaje = [
+        '🏦 *PrestaYa - Confirmación de Pago*',
+        '',
+        `Hola ${prestamo.deudor.nombre},`,
+        '',
+        '✅ Hemos registrado tu pago:',
+        `💰 Monto: ${montoFormateado}`,
+        `📅 Fecha: ${fechaPago}`,
+        `🆔 Préstamo: #${prestamo.id}`,
+        '',
+        `📊 Saldo pendiente: ${saldoFormateado}`,
+        '',
+        saldoPendiente > 0
+          ? '⏰ Recuerda realizar tu próximo pago puntualmente.'
+          : '🎉 ¡Felicitaciones! Has completado el pago de tu préstamo.',
+        '',
+        'Gracias por confiar en PrestaYa.',
+        'Para consultas: escribe por WhatsApp o visita nuestra oficina.'
+      ].join('\n')
+
+      const url = `https://wa.me/${numeroConCodigo}?text=${encodeURIComponent(mensaje)}`
+
+      window.open(url, '_blank')
+    } catch (error) {
+      console.error('Error al preparar mensaje de WhatsApp:', error)
+      alert('No se pudo preparar el mensaje de WhatsApp')
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -45,9 +122,13 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
 
       if (result.success) {
         onPaymentSuccess(result)
-        onClose()
+        setResultadoPago(result)
+        setModo('resumen')
       } else {
-        setError(result.error || 'Error al registrar el pago')
+        const detalleError = result.errors && result.errors.length > 0
+          ? result.errors[0]
+          : result.error
+        setError(detalleError || 'Error al registrar el pago')
       }
     } catch (err) {
       setError(err.message || 'Error inesperado')
@@ -74,7 +155,7 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
         padding: '20px',
         borderRadius: '8px',
         width: '90%',
-        maxWidth: '400px',
+        maxWidth: '600px',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
       }}>
         <h3 style={{ marginTop: 0, color: '#2c3e50' }}>💰 Registrar Pago</h3>
@@ -84,6 +165,95 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
           <div style={{ fontSize: '12px', color: '#6c757d' }}>Préstamo #{prestamo.id}</div>
         </div>
 
+        <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#e9f7ef', borderRadius: '4px', fontSize: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span>Fecha actual:</span>
+            <strong>{new Date().toISOString().split('T')[0]}</strong>
+          </div>
+          {prestamo.proximoPago?.hay_cuotas_pendientes && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Próxima cuota:</span>
+                <strong>#{prestamo.proximoPago.numero_cuota}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Vence el:</span>
+                <strong>{prestamo.proximoPago.fecha_vencimiento}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Monto de la cuota:</span>
+                <strong>{formatearMonto(prestamo.proximoPago.monto_cuota || 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Multas acumuladas:</span>
+                <strong>{formatearMonto(prestamo.proximoPago.total_multas || 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Total recomendado hoy:</span>
+                <strong>{formatearMonto(prestamo.proximoPago.monto_total_recomendado || parseFloat(monto || 0))}</strong>
+              </div>
+              {prestamo.proximoPago.dias_mora > 0 && (
+                <div style={{ marginTop: '4px', color: '#c0392b' }}>
+                  Días de mora: <strong>{prestamo.proximoPago.dias_mora}</strong>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {cronograma && cronograma.length > 0 && (
+          <div style={{ marginBottom: '15px', maxHeight: '180px', overflowY: 'auto', border: '1px solid #e5e5e5', borderRadius: '4px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8f9fa' }}>
+                  <th style={{ padding: '4px' }}>#</th>
+                  <th style={{ padding: '4px' }}>Fecha</th>
+                  <th style={{ padding: '4px' }}>Monto</th>
+                  <th style={{ padding: '4px' }}>Estado</th>
+                  <th style={{ padding: '4px' }}>Días</th>
+                  <th style={{ padding: '4px' }}>Multa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cronograma.map((cuota) => {
+                  const esAtrasada = cuota.estado === 'ATRASADO'
+                  const esPagada = cuota.estado === 'PAGADO'
+                  return (
+                    <tr
+                      key={cuota.numero_cuota}
+                      style={{
+                        backgroundColor: esPagada ? '#d4edda' : esAtrasada ? '#f8d7da' : 'white'
+                      }}
+                    >
+                      <td style={{ padding: '4px', textAlign: 'center' }}>{cuota.numero_cuota}</td>
+                      <td style={{ padding: '4px', textAlign: 'center' }}>{cuota.fecha_vencimiento}</td>
+                      <td style={{ padding: '4px', textAlign: 'right' }}>{formatearMonto(cuota.monto)}</td>
+                      <td style={{ padding: '4px', textAlign: 'center' }}>{cuota.estado}</td>
+                      <td style={{ padding: '4px', textAlign: 'center' }}>{cuota.dias_atraso || 0}</td>
+                      <td style={{ padding: '4px', textAlign: 'right' }}>
+                        {cuota.multa_mora ? formatearMonto(cuota.multa_mora) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {modo === 'resumen' && resultadoPago && (
+          <div style={{ 
+            backgroundColor: '#d4edda', 
+            color: '#155724', 
+            padding: '10px', 
+            borderRadius: '4px',
+            marginBottom: '15px',
+            fontSize: '14px'
+          }}>
+            Pago registrado correctamente. Ahora puede enviar el WhatsApp o cerrar la ventana.
+          </div>
+        )}
+        
         {error && (
           <div style={{ 
             backgroundColor: '#f8d7da', 
@@ -97,43 +267,103 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Monto a Pagar</label>
-            <input
-              type="number"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
-              required
-              min="1"
-            />
-          </div>
+        {modo === 'formulario' && (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Monto a Pagar</label>
+              <input
+                type="number"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+                required
+                min="1"
+              />
+            </div>
 
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Método de Pago</label>
-            <select
-              value={metodoPago}
-              onChange={(e) => setMetodoPago(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Método de Pago</label>
+              <select
+                value={metodoPago}
+                onChange={(e) => setMetodoPago(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+              >
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia - Bre-b</option>
+                <option value="nequi">Nequi</option>
+                <option value="daviplata">Daviplata</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Notas (Opcional)</label>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box', minHeight: '60px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ced4da',
+                  backgroundColor: 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+                disabled={loading}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+                disabled={loading}
+              >
+                {loading ? 'Procesando...' : 'Confirmar Pago'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {modo === 'resumen' && resultadoPago && (
+          <div style={{ 
+            marginTop: '15px', 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <button
+              type="button"
+              onClick={handleEnviarWhatsapp}
+              style={{
+                padding: '8px 12px',
+                border: 'none',
+                backgroundColor: '#25D366',
+                color: 'white',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px'
+              }}
             >
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="nequi">Nequi</option>
-              <option value="daviplata">Daviplata</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Notas (Opcional)</label>
-            <textarea
-              value={notas}
-              onChange={(e) => setNotas(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box', minHeight: '60px' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <span>📲</span>
+              <span>WhatsApp Deudor</span>
+            </button>
             <button
               type="button"
               onClick={onClose}
@@ -142,28 +372,14 @@ const PaymentModal = ({ isOpen, onClose, prestamo, cobradorId, onPaymentSuccess 
                 border: '1px solid #ced4da',
                 backgroundColor: 'white',
                 borderRadius: '4px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                fontSize: '13px'
               }}
-              disabled={loading}
             >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                backgroundColor: '#28a745',
-                color: 'white',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-              disabled={loading}
-            >
-              {loading ? 'Procesando...' : 'Confirmar Pago'}
+              Cerrar
             </button>
           </div>
-        </form>
+        )}
       </div>
     </div>
   )
@@ -173,6 +389,7 @@ const MisDeudores = () => {
   const [deudoresConPrestamos, setDeudoresConPrestamos] = useState([])
   const [loading, setLoading] = useState(true)
   const [cobradorId, setCobradorId] = useState(null)
+  const [cobradorIds, setCobradorIds] = useState([])
   // Usar la fecha actual para mostrar los préstamos de prueba
   const [fechaCobro] = useState(() => {
     const hoy = new Date()
@@ -182,63 +399,69 @@ const MisDeudores = () => {
   const [selectedPrestamo, setSelectedPrestamo] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [mensajeExito, setMensajeExito] = useState(null)
+  const [detalleUltimoPago, setDetalleUltimoPago] = useState(null)
 
   useEffect(() => {
     if (mensajeExito) {
-      const timer = setTimeout(() => setMensajeExito(null), 3000)
+      const timer = setTimeout(() => {
+        setMensajeExito(null)
+        setDetalleUltimoPago(null)
+      }, 3000)
       return () => clearTimeout(timer)
     }
   }, [mensajeExito])
 
   useEffect(() => {
     const fetchCobradorId = async () => {
-      const user = supabase.auth.getUser()
-      if (!user) return
-      // Obtener email usuario autenticado para consultar cobrador
-      const session = await supabase.auth.getSession()
-      const email = session.data?.session?.user?.email
-      if (!email) return
+      const { data: sessionData } = await supabase.auth.getSession()
+      const userId = sessionData?.session?.user?.id || null
+      const email = sessionData?.session?.user?.email || null
 
-      // Manejar alias para usuario de prueba
-      const emailBusqueda = email === 'cobrador.prueba@prestaya.com' 
-        ? 'cobrador.prueba@gmail.com' 
-        : email
+      if (!userId && !email) {
+        setLoading(false)
+        return
+      }
 
-      // Buscar id cobrador según email
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('cobradores')
-        .select('id')
-        .ilike('email', emailBusqueda)
-        .maybeSingle()
-      
+        .select('id, user_id, email')
+        .ilike('email', (email || '').trim())
+        .order('id', { ascending: true })
+
       if (error) {
-        console.error('Error obteniendo cobrador:', error)
+        console.error('Error obteniendo cobradores por email:', error)
         setLoading(false)
         return
       }
-      
-      if (!data) {
-        console.warn('Cobrador no encontrado para el email:', email)
+
+      if (!data || data.length === 0) {
+        console.warn('No se encontraron cobradores para el usuario autenticado')
         setLoading(false)
         return
       }
-      
-      setCobradorId(data.id)
+
+      const ids = data.map(c => c.id)
+      setCobradorIds(ids)
+
+      const preferido = userId
+        ? data.find(c => c.user_id === userId) || data[0]
+        : data[0]
+
+      setCobradorId(preferido.id)
     }
 
     fetchCobradorId()
   }, [])
 
   const fetchDeudoresConPrestamos = useCallback(async () => {
-    if (!cobradorId) return
+    if (!cobradorIds || cobradorIds.length === 0) return
 
     try {
       setLoading(true)
-      // 1. Obtener deudores del cobrador
       const { data: deudores, error: errorDeudores } = await supabase
         .from('deudores')
         .select('*')
-        .eq('cobrador_id', cobradorId)
+        .in('cobrador_id', cobradorIds)
         .order('nombre', { ascending: true })
       
       if (errorDeudores) {
@@ -247,7 +470,6 @@ const MisDeudores = () => {
         return
       }
 
-      // 2. Para cada deudor, obtener sus préstamos activos y crear una fila por préstamo
       const prestamosConDeudor = []
       
       await Promise.all(
@@ -264,23 +486,33 @@ const MisDeudores = () => {
             return
           }
 
-          // 3. Para cada préstamo, crear una entrada individual
-          prestamos.forEach(prestamo => {
-            const proximoPago = obtenerProximoPago(prestamo)
-            
-            // 4. Incluir todos los préstamos activos (no finalizados)
-            // Si tiene cuota pendiente para hoy, se mostrará como prioridad o se puede filtrar en la vista si se desea
+          for (const prestamo of prestamos) {
+            let prestamoBase = prestamo
+            let proximoPago
+
+            try {
+              const loanInfo = await getConsolidatedLoanInfo(prestamo.id)
+              if (loanInfo && loanInfo.success && loanInfo.loan) {
+                prestamoBase = loanInfo.loan
+                proximoPago = loanInfo.nextPayment || obtenerProximoPago(prestamoBase)
+              } else {
+                proximoPago = obtenerProximoPago(prestamoBase)
+              }
+            } catch (e) {
+              console.error(`Error consolidando préstamo ${prestamo.id}:`, e)
+              proximoPago = obtenerProximoPago(prestamoBase)
+            }
+
             prestamosConDeudor.push({
-              ...prestamo,
+              ...prestamoBase,
               deudor: deudor,
               proximoPago: proximoPago,
               esCobroHoy: proximoPago.hay_cuotas_pendientes && proximoPago.fecha_vencimiento === fechaCobro
             })
-          })
+          }
         })
       )
 
-      // 5. Ordenar por nombre de deudor y luego por ID de préstamo
       prestamosConDeudor.sort((a, b) => {
         if (a.deudor.nombre !== b.deudor.nombre) {
           return a.deudor.nombre.localeCompare(b.deudor.nombre)
@@ -329,6 +561,58 @@ const MisDeudores = () => {
           📅 Día de Cobro: {fechaCobro}
         </span>
       </div>
+      
+      {mensajeExito && (
+        <div style={{ 
+          marginBottom: '15px',
+          padding: '10px',
+          borderRadius: '6px',
+          backgroundColor: '#d4edda',
+          color: '#155724',
+          fontSize: '14px'
+        }}>
+          {mensajeExito}
+        </div>
+      )}
+
+      {detalleUltimoPago && detalleUltimoPago.payment && (
+        <div style={{ 
+          marginBottom: '15px',
+          padding: '10px',
+          borderRadius: '6px',
+          backgroundColor: '#fff3cd',
+          color: '#856404',
+          fontSize: '12px'
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+            Último pago registrado para préstamo #{detalleUltimoPago.payment.prestamo_id}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '6px' }}>
+            <span>Monto: {formatearMonto(detalleUltimoPago.payment.monto || 0)}</span>
+            <span>Fecha: {detalleUltimoPago.payment.fecha_pago}</span>
+            <span>Método: {detalleUltimoPago.payment.metodo_pago}</span>
+            <span>Tipo: {detalleUltimoPago.paymentType}</span>
+          </div>
+          {detalleUltimoPago.paymentApplication &&
+            detalleUltimoPago.paymentApplication.installments &&
+            detalleUltimoPago.paymentApplication.installments.length > 0 && (
+              <div>
+                <div style={{ marginBottom: '4px' }}>Aplicación del pago:</div>
+                <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                  {detalleUltimoPago.paymentApplication.installments.map((inst, index) => (
+                    <li key={index}>
+                      {inst.type === 'penalty'
+                        ? `Multas: ${formatearMonto(inst.appliedAmount)}`
+                        : `Cuota #${inst.installmentNumber} (${inst.dueDate}): ${formatearMonto(
+                            inst.appliedAmount
+                          )} (${inst.newStatus})`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+          )}
+        </div>
+      )}
       
       {deudoresConPrestamos.length === 0 ? (
         <div style={{ 
@@ -469,7 +753,7 @@ const MisDeudores = () => {
         cobradorId={cobradorId}
         onPaymentSuccess={(result) => {
           setMensajeExito(result.message)
-          // Recargar la lista
+          setDetalleUltimoPago(result)
           fetchDeudoresConPrestamos()
         }}
       />

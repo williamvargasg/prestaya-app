@@ -137,6 +137,14 @@ const getColombianHolidays = (year) => {
  * @param {Date|string} fecha - Fecha a verificar
  * @returns {boolean} True si es día hábil
  */
+const fechaLocalISO = (fecha) => {
+  const date = fecha instanceof Date ? fecha : new Date(fecha);
+  const año = date.getFullYear();
+  const mes = String(date.getMonth() + 1).padStart(2, '0');
+  const dia = String(date.getDate()).padStart(2, '0');
+  return `${año}-${mes}-${dia}`;
+};
+
 export const esDiaHabil = (fecha) => {
   let date;
   let fechaStr;
@@ -152,10 +160,7 @@ export const esDiaHabil = (fecha) => {
     }
   } else {
     date = new Date(fecha);
-    const año = date.getFullYear();
-    const mes = String(date.getMonth() + 1).padStart(2, '0');
-    const dia = String(date.getDate()).padStart(2, '0');
-    fechaStr = `${año}-${mes}-${dia}`;
+    fechaStr = fechaLocalISO(date);
   }
   
   if (date.getDay() === 0) return false;
@@ -303,7 +308,7 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
   
   // Usar frecuencia_pago o modalidad_pago (compatibilidad con ambos nombres)
   const modalidad = frecuencia_pago || modalidad_pago;
-  const fechaHoy = fechaActual.toISOString().split('T')[0];
+  const fechaHoy = fechaLocalISO(fechaActual);
   
   let multaTotal = 0;
   let incumplimientosMes = 0;
@@ -316,7 +321,7 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
   if (modalidad === 'semanal') {
     // LÓGICA SEMANAL: Multa inmediata al día siguiente del vencimiento
     cronograma_pagos.forEach(cuota => {
-      if (cuota.estado === 'PENDIENTE' && cuota.fecha_vencimiento < fechaHoy) {
+      if (cuota.estado !== 'PAGADO' && cuota.fecha_vencimiento < fechaHoy) {
         const fechaVenc = new Date(cuota.fecha_vencimiento);
         const diferenciaDias = Math.floor((fechaActual - fechaVenc) / (1000 * 60 * 60 * 24));
         
@@ -335,71 +340,33 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
     });
     
   } else if (modalidad === 'diario') {
-    // LÓGICA DIARIA: Más compleja con escalamiento y control mensual
-    
-    // 1. Identificar períodos de atraso (consecutivos o no)
-    let periodosAtraso = [];
-    let periodoActual = [];
-    let fechaAnterior = null;
-    
-    // Ordenar cuotas por fecha para detectar períodos
-    const cuotasOrdenadas = cronograma_pagos
-      .filter(cuota => cuota.estado === 'PENDIENTE' && cuota.fecha_vencimiento < fechaHoy)
+    const cuotasVencidas = cronograma_pagos
+      .filter(cuota => cuota.estado !== 'PAGADO' && cuota.fecha_vencimiento < fechaHoy)
       .sort((a, b) => new Date(a.fecha_vencimiento) - new Date(b.fecha_vencimiento));
-    
-    cuotasOrdenadas.forEach(cuota => {
-      const fechaCuota = new Date(cuota.fecha_vencimiento);
-      
-      if (fechaAnterior === null) {
-        // Primera cuota atrasada
-        periodoActual = [cuota];
-      } else {
-        const diferenciaDias = Math.floor((fechaCuota - fechaAnterior) / (1000 * 60 * 60 * 24));
-        
-        if (diferenciaDias === 1) {
-          // Día consecutivo - continúa el período
-          periodoActual.push(cuota);
-        } else {
-          // Hay un salto - termina el período actual y empieza uno nuevo
-          if (periodoActual.length > 0) {
-            periodosAtraso.push([...periodoActual]);
-          }
-          periodoActual = [cuota];
-        }
-      }
-      
-      fechaAnterior = fechaCuota;
-    });
-    
-    // Agregar el último período si existe
-    if (periodoActual.length > 0) {
-      periodosAtraso.push(periodoActual);
-    }
-    
-    // 2. Aplicar multas por períodos de atraso
-    periodosAtraso.forEach((periodo, index) => {
-      const diasAtraso = periodo.length;
-      const fechaPrimerAtraso = new Date(periodo[0].fecha_vencimiento);
-      
-      // Multa por 3 días consecutivos de atraso
-      if (diasAtraso >= 3) {
+
+    if (cuotasVencidas.length > 0) {
+      const primeraCuota = cuotasVencidas[0];
+      const fechaPrimerAtraso = new Date(primeraCuota.fecha_vencimiento);
+      const diasAtrasoPeriodo = Math.floor((fechaActual - fechaPrimerAtraso) / (1000 * 60 * 60 * 24));
+
+      if (diasAtrasoPeriodo >= 2) {
         multaTotal += MULTA_MORA;
         detalleMultas.push({
           tipo: 'MORA_DIARIA_3_DIAS',
-          cuotas: periodo.map(c => c.numero_cuota),
-          dias_atraso: diasAtraso,
+          cuota: primeraCuota.numero_cuota,
+          fecha_vencimiento: primeraCuota.fecha_vencimiento,
+          dias_atraso: diasAtrasoPeriodo,
           monto_multa: MULTA_MORA,
-          descripcion: `Multa por ${diasAtraso} días consecutivos de atraso (período ${index + 1})`
+          descripcion: `Multa por 3+ días de atraso desde cuota #${primeraCuota.numero_cuota}`
         });
       }
-      
-      // Contar cada período como un incumplimiento para el control mensual
+
       if (fechaPrimerAtraso.getMonth() === mesActual && fechaPrimerAtraso.getFullYear() === añoActual) {
         incumplimientosMes++;
       }
-    });
-    
-    // 3. Control de 3 incumplimientos en el mes (multa adicional)
+    }
+
+    // Control de 3 incumplimientos en el mes (multa adicional)
     if (incumplimientosMes >= 3) {
       multaTotal += MULTA_MORA;
       detalleMultas.push({
@@ -578,7 +545,7 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
   if (isNaN(fechaObj.getTime())) {
       fechaObj = new Date(); // Fallback a fecha actual si la fecha proporcionada es inválida
   }
-  const fechaHoy = fechaObj.toISOString().split('T')[0];
+  const fechaHoy = fechaLocalISO(fechaObj);
   let diasMora = 0;
   let cuotasAtrasadas = 0;
   let montoAtrasado = 0;
@@ -823,7 +790,7 @@ export const obtenerProximoPago = (prestamo) => {
     };
   }
   
-  const fechaHoy = new Date().toISOString().split('T')[0];
+  const fechaHoy = fechaLocalISO(new Date());
   const esAtrasado = proximaCuota.fecha_vencimiento < fechaHoy;
   
   return {

@@ -87,7 +87,8 @@ const Register = ({ onBackToLogin }) => {
         options: {
           data: {
             nombre: formData.nombre,
-            tipo_usuario: formData.tipoUsuario
+            tipo_usuario: formData.tipoUsuario,
+            telefono: formData.telefono || null
           }
         }
       })
@@ -103,7 +104,7 @@ const Register = ({ onBackToLogin }) => {
           .from('cobradores')
           .insert({
              nombre: formData.nombre,
-             email: formData.email,
+             email: formData.email.trim(),
              zona_id: parseInt(formData.zonaId),
              telefono: formData.telefono,
              active: true,

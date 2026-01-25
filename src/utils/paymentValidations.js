@@ -48,7 +48,6 @@ export const validatePaymentAmount = (amount, loanInfo = null) => {
     return result
   }
 
-  // Validaciones específicas del préstamo
   if (loanInfo) {
     // Advertir si el pago excede el saldo pendiente
     if (numAmount > loanInfo.remainingBalance) {
@@ -69,12 +68,13 @@ export const validatePaymentAmount = (amount, loanInfo = null) => {
       return result
     }
 
-    // Advertir sobre pagos muy pequeños comparados con la cuota
-    const avgInstallment = loanInfo.totalAmount / loanInfo.paymentSchedule.length
-    if (numAmount < avgInstallment * 0.1) {
-      result.warnings.push(
-        `El pago es muy pequeño comparado con la cuota promedio ($${avgInstallment.toLocaleString()})`
-      )
+    if (loanInfo.totalAmount && Array.isArray(loanInfo.paymentSchedule) && loanInfo.paymentSchedule.length > 0) {
+      const avgInstallment = loanInfo.totalAmount / loanInfo.paymentSchedule.length
+      if (numAmount < avgInstallment * 0.1) {
+        result.warnings.push(
+          `El pago es muy pequeño comparado con la cuota promedio ($${avgInstallment.toLocaleString()})`
+        )
+      }
     }
   }
 
@@ -357,10 +357,18 @@ export const validateCompletePayment = (paymentData, loanInfo, deudorInfo = null
  * @returns {string} - 'completo', 'parcial', 'exceso'
  */
 export const determinePaymentType = (amount, proximoPago) => {
-  if (!proximoPago) return 'completo'
-  
   const numAmount = parseFloat(amount)
-  const recommendedAmount = proximoPago.montoTotal
+  if (isNaN(numAmount)) return 'completo'
+
+  if (!proximoPago) return 'completo'
+
+  const recommendedAmount =
+    proximoPago.montoTotal ??
+    proximoPago.monto_total_recomendado ??
+    proximoPago.monto_cuota ??
+    0
+
+  if (!recommendedAmount) return 'completo'
   
   if (numAmount === recommendedAmount) {
     return 'completo'
@@ -387,9 +395,16 @@ export const calculatePaymentSuggestions = (loanInfo, proximoPago) => {
 
   if (!loanInfo || !proximoPago) return suggestions
 
-  // Pago recomendado (próximo pago)
+  const recommendedAmount =
+    proximoPago.montoTotal ??
+    proximoPago.monto_total_recomendado ??
+    proximoPago.monto_cuota ??
+    0
+
+  if (!recommendedAmount) return suggestions
+
   suggestions.recommended = {
-    amount: proximoPago.montoTotal,
+    amount: recommendedAmount,
     description: 'Pago recomendado (próxima cuota + multas)',
     type: 'completo'
   }
@@ -397,7 +412,7 @@ export const calculatePaymentSuggestions = (loanInfo, proximoPago) => {
   // Pago mínimo (solo multas si las hay, o porcentaje de la cuota)
   const minimumAmount = Math.max(
     loanInfo.totalPenalties || 0,
-    proximoPago.montoTotal * 0.3
+    recommendedAmount * 0.3
   )
   suggestions.minimum = {
     amount: minimumAmount,
