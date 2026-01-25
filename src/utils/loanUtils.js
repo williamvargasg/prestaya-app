@@ -285,8 +285,31 @@ export const generarReporteMultas = (prestamos, fechaActual = new Date()) => {
   };
 };
 
-// ⚠️ CONSTANTES DE MULTAS POR MORA - PrestaYa
-const MULTA_MORA = 20000; // $20,000 por mora
+// ⚠️ CONFIGURACIÓN BASE DE MULTAS POR MORA - PrestaYa
+const DEFAULT_MORA_CONFIG = {
+  diasMoraParaMulta: 3,
+  montoMulta: 20000
+};
+
+const resolveMoraConfig = (prestamo = {}, config = {}) => {
+  const diasRaw =
+    prestamo?.dias_mora_para_multa ??
+    config?.dias_mora_para_multa ??
+    config?.diasMoraParaMulta;
+  const montoRaw =
+    prestamo?.monto_multa ??
+    config?.monto_multa ??
+    config?.montoMulta;
+
+  const diasMoraParaMulta = Number.isFinite(Number(diasRaw))
+    ? Math.max(1, Number(diasRaw))
+    : DEFAULT_MORA_CONFIG.diasMoraParaMulta;
+  const montoMulta = Number.isFinite(Number(montoRaw))
+    ? Math.max(0, Number(montoRaw))
+    : DEFAULT_MORA_CONFIG.montoMulta;
+
+  return { diasMoraParaMulta, montoMulta };
+};
 
 /**
  * Calcula el total a pagar (monto + 20%)
@@ -303,8 +326,9 @@ export const calcularTotalAPagar = (monto) => {
  * @param {Date} fechaActual - Fecha actual para cálculos
  * @returns {Object} Información de multas
  */
-export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
+export const calcularMultasPorMora = (prestamo, fechaActual = new Date(), config = {}) => {
   const { cronograma_pagos = [], frecuencia_pago, modalidad_pago } = prestamo;
+  const { diasMoraParaMulta, montoMulta } = resolveMoraConfig(prestamo, config);
   
   // Usar frecuencia_pago o modalidad_pago (compatibilidad con ambos nombres)
   const modalidad = frecuencia_pago || modalidad_pago;
@@ -325,14 +349,14 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
         const fechaVenc = new Date(cuota.fecha_vencimiento);
         const diferenciaDias = Math.floor((fechaActual - fechaVenc) / (1000 * 60 * 60 * 24));
         
-        if (diferenciaDias >= 1) { // Multa inmediata al día siguiente
-          multaTotal += MULTA_MORA;
+        if (diferenciaDias >= diasMoraParaMulta) {
+          multaTotal += montoMulta;
           detalleMultas.push({
             tipo: 'MORA_SEMANAL',
             cuota: cuota.numero_cuota,
             fecha_vencimiento: cuota.fecha_vencimiento,
             dias_atraso: diferenciaDias,
-            monto_multa: MULTA_MORA,
+            monto_multa: montoMulta,
             descripcion: `Multa por mora cuota semanal #${cuota.numero_cuota}`
           });
         }
@@ -349,30 +373,32 @@ export const calcularMultasPorMora = (prestamo, fechaActual = new Date()) => {
       const fechaPrimerAtraso = new Date(primeraCuota.fecha_vencimiento);
       const diasAtrasoPeriodo = Math.floor((fechaActual - fechaPrimerAtraso) / (1000 * 60 * 60 * 24));
 
-      if (diasAtrasoPeriodo >= 2) {
-        multaTotal += MULTA_MORA;
+      if (diasAtrasoPeriodo >= diasMoraParaMulta) {
+        multaTotal += montoMulta;
         detalleMultas.push({
           tipo: 'MORA_DIARIA_3_DIAS',
           cuota: primeraCuota.numero_cuota,
           fecha_vencimiento: primeraCuota.fecha_vencimiento,
           dias_atraso: diasAtrasoPeriodo,
-          monto_multa: MULTA_MORA,
-          descripcion: `Multa por 3+ días de atraso desde cuota #${primeraCuota.numero_cuota}`
+          monto_multa: montoMulta,
+          descripcion: `Multa por ${diasMoraParaMulta}+ días de atraso desde cuota #${primeraCuota.numero_cuota}`
         });
       }
 
-      if (fechaPrimerAtraso.getMonth() === mesActual && fechaPrimerAtraso.getFullYear() === añoActual) {
-        incumplimientosMes++;
-      }
+      const incumplimientosMesActual = cuotasVencidas.filter(cuota => {
+        const fechaCuota = new Date(cuota.fecha_vencimiento);
+        return fechaCuota.getMonth() === mesActual && fechaCuota.getFullYear() === añoActual;
+      });
+      incumplimientosMes = incumplimientosMesActual.length;
     }
 
     // Control de 3 incumplimientos en el mes (multa adicional)
     if (incumplimientosMes >= 3) {
-      multaTotal += MULTA_MORA;
+      multaTotal += montoMulta;
       detalleMultas.push({
         tipo: 'MORA_MENSUAL_3_INCUMPLIMIENTOS',
         incumplimientos: incumplimientosMes,
-        monto_multa: MULTA_MORA,
+        monto_multa: montoMulta,
         descripcion: `Multa adicional por ${incumplimientosMes} períodos de incumplimiento en el mes`
       });
     }
@@ -513,7 +539,7 @@ export const generarCronogramaPagos = (prestamo) => {
  * @param {Date} fechaActual - Fecha actual para cálculos
  * @returns {Object} Estado consolidado del préstamo
  */
-export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
+export const consolidateLoanState = (prestamo, fechaActual = new Date(), config = {}) => {
   const {
     cronograma_pagos = [],
     pagos_realizados = [],
@@ -571,7 +597,7 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
   });
 
   // 5. Calcular multas por mora según lógica PrestaYa
-  const multasInfo = calcularMultasPorMora(prestamo, fechaActual);
+  const multasInfo = calcularMultasPorMora(prestamo, fechaActual, config);
   
   // Actualizar cronograma con multas
   cronogramaActualizado.forEach(cuota => {
@@ -646,7 +672,7 @@ export const consolidateLoanState = (prestamo, fechaActual = new Date()) => {
  * @param {Object} nuevoPago - Datos del nuevo pago
  * @returns {Object} Préstamo actualizado
  */
-export const registrarPago = (prestamo, nuevoPago) => {
+export const registrarPago = (prestamo, nuevoPago, config = {}) => {
   const pagosActualizados = [...(prestamo.pagos_realizados || []), nuevoPago];
   
   const prestamoConPago = {
@@ -654,7 +680,7 @@ export const registrarPago = (prestamo, nuevoPago) => {
     pagos_realizados: pagosActualizados
   };
   
-  return consolidateLoanState(prestamoConPago);
+  return consolidateLoanState(prestamoConPago, new Date(), config);
 };
 
 /**
@@ -662,8 +688,8 @@ export const registrarPago = (prestamo, nuevoPago) => {
  * @param {Array} prestamos - Array de préstamos
  * @returns {Object} Estadísticas consolidadas
  */
-export const calcularEstadisticasCartera = (prestamos) => {
-  const prestamosConsolidados = prestamos.map(p => consolidateLoanState(p));
+export const calcularEstadisticasCartera = (prestamos, config = {}) => {
+  const prestamosConsolidados = prestamos.map(p => consolidateLoanState(p, new Date(), config));
   
   const estadisticas = {
     total_prestamos: prestamosConsolidados.length,
@@ -711,8 +737,8 @@ export const calcularTasasInteres = (montoPrestado, totalAPagar, plazoEnDias) =>
  * @param {number} montoPago - Monto del pago a validar
  * @returns {Object} Resultado de la validación
  */
-export const validarPago = (prestamo, montoPago) => {
-  const prestamoConsolidado = consolidateLoanState(prestamo);
+export const validarPago = (prestamo, montoPago, config = {}) => {
+  const prestamoConsolidado = consolidateLoanState(prestamo, new Date(), config);
   const { consolidado } = prestamoConsolidado;
   
   if (montoPago <= 0) {
@@ -774,8 +800,8 @@ export const calcularMontoCuota = (montoPrestado, frecuenciaPago) => {
  * @param {Object} prestamo - Datos del préstamo
  * @returns {Object} Información del próximo pago
  */
-export const obtenerProximoPago = (prestamo) => {
-  const prestamoConsolidado = consolidateLoanState(prestamo);
+export const obtenerProximoPago = (prestamo, config = {}) => {
+  const prestamoConsolidado = consolidateLoanState(prestamo, new Date(), config);
   const { cronograma_pagos, consolidado } = prestamoConsolidado;
   
   // Buscar la primera cuota pendiente o atrasada

@@ -29,7 +29,8 @@ INSERT INTO prestamos (
     fecha_inicio,
     fecha,
     modalidad_pago,
-    estado
+    estado,
+    empresa_id
 )
 SELECT 
     d.id,
@@ -40,7 +41,8 @@ SELECT
     CURRENT_DATE - INTERVAL '15 days', -- Hace 15 días
     CURRENT_DATE - INTERVAL '15 days', -- fecha
     'diario', -- modalidad diaria
-    'ACTIVO'
+    'ACTIVO',
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 FROM deudores d
 JOIN cobradores c ON d.cobrador_id = c.id
 WHERE c.email = 'cobrador.prueba@prestaya.com' 
@@ -59,7 +61,8 @@ INSERT INTO prestamos (
     fecha_inicio,
     fecha,
     modalidad_pago,
-    estado
+    estado,
+    empresa_id
 )
 SELECT 
     d.id,
@@ -70,7 +73,8 @@ SELECT
     CURRENT_DATE - INTERVAL '45 days', -- Hace 45 días
     CURRENT_DATE - INTERVAL '45 days', -- fecha
     'diario', -- modalidad diaria
-    'ACTIVO'
+    'ACTIVO',
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 FROM deudores d
 JOIN cobradores c ON d.cobrador_id = c.id
 WHERE c.email = 'cobrador.prueba@prestaya.com' 
@@ -89,7 +93,8 @@ INSERT INTO prestamos (
     fecha_inicio,
     fecha,
     modalidad_pago,
-    estado
+    estado,
+    empresa_id
 )
 SELECT 
     d.id,
@@ -100,7 +105,8 @@ SELECT
     CURRENT_DATE - INTERVAL '5 days', -- Hace 5 días
     CURRENT_DATE - INTERVAL '5 days', -- fecha
     'semanal', -- modalidad semanal
-    'ACTIVO'
+    'ACTIVO',
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 FROM deudores d
 JOIN cobradores c ON d.cobrador_id = c.id
 WHERE c.email = 'cobrador.prueba@prestaya.com' 
@@ -119,7 +125,8 @@ INSERT INTO prestamos (
     fecha_inicio,
     fecha,
     modalidad_pago,
-    estado
+    estado,
+    empresa_id
 )
 SELECT 
     d.id,
@@ -130,7 +137,8 @@ SELECT
     CURRENT_DATE - INTERVAL '90 days', -- Hace 90 días
     CURRENT_DATE - INTERVAL '90 days', -- fecha
     'diario', -- modalidad diaria
-    'ACTIVO'
+    'ACTIVO',
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 FROM deudores d
 JOIN cobradores c ON d.cobrador_id = c.id
 WHERE c.email = 'cobrador.prueba@prestaya.com' 
@@ -148,7 +156,8 @@ INSERT INTO pagos (
     estado_pago,
     metodo_pago,
     cobrador_id,
-    notas
+    notas,
+    empresa_id
 )
 SELECT 
     p.id,
@@ -157,7 +166,8 @@ SELECT
     'parcial',
     'efectivo',
     c.id, -- cobrador_id
-    'Pago parcial - cliente con dificultades'
+    'Pago parcial - cliente con dificultades',
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 FROM prestamos p
 JOIN deudores d ON p.deudor_id = d.id
 JOIN cobradores c ON d.cobrador_id = c.id
@@ -176,7 +186,8 @@ INSERT INTO pagos (
     estado_pago,
     metodo_pago,
     cobrador_id,
-    notas
+    notas,
+    empresa_id
 )
 SELECT 
     p.id,
@@ -185,7 +196,8 @@ SELECT
     'completo',
     'transferencia',
     c.id, -- cobrador_id
-    'Pago puntual de cuota'
+    'Pago puntual de cuota',
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 FROM prestamos p
 JOIN deudores d ON p.deudor_id = d.id
 JOIN cobradores c ON d.cobrador_id = c.id

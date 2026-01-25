@@ -5,6 +5,7 @@ import DeudoresManager from './DeudoresManager'
 import PrestamosManager from './PrestamosManager'
 import FestivosManager from './FestivosManager'
 import MultasManager from './MultasManager'
+import EmpresaConfigManager from './EmpresaConfigManager'
 
 const Dashboard = () => {
   const [activeModule, setActiveModule] = useState('zonas')
@@ -17,6 +18,7 @@ const Dashboard = () => {
       case 'prestamos': return <PrestamosManager />
       case 'festivos': return <FestivosManager />
       case 'multas': return <MultasManager />
+      case 'empresa': return <EmpresaConfigManager />
       default: return <ZonasManager />
     }
   }
@@ -67,7 +69,8 @@ const Dashboard = () => {
           { key: 'deudores', label: '👤 Deudores', icon: '👤' },
           { key: 'prestamos', label: '💰 Préstamos', icon: '💰' },
           { key: 'festivos', label: '🗓️ Festivos', icon: '🗓️' },
-          { key: 'multas', label: '🚨 Multas', icon: '🚨' }
+          { key: 'multas', label: '🚨 Multas', icon: '🚨' },
+          { key: 'empresa', label: '🏢 Empresa', icon: '🏢' }
         ].map(({ key, label, icon }) => (
           <button
             key={key}

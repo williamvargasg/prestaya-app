@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { supabase } from '../../supabaseClient'
+import { getDefaultEmpresa } from '../../services/empresaService'
 
 const Register = ({ onBackToLogin }) => {
   const [formData, setFormData] = useState({
@@ -80,6 +81,11 @@ const Register = ({ onBackToLogin }) => {
     setLoading(true)
 
     try {
+      const defaultEmpresa = await getDefaultEmpresa()
+      if (!defaultEmpresa?.id) {
+        throw new Error('No hay empresa configurada. Contacta al administrador.')
+      }
+
       // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email.trim(),
@@ -88,7 +94,8 @@ const Register = ({ onBackToLogin }) => {
           data: {
             nombre: formData.nombre,
             tipo_usuario: formData.tipoUsuario,
-            telefono: formData.telefono || null
+            telefono: formData.telefono || null,
+            empresa_id: defaultEmpresa.id
           }
         }
       })
@@ -108,7 +115,8 @@ const Register = ({ onBackToLogin }) => {
              zona_id: parseInt(formData.zonaId),
              telefono: formData.telefono,
              active: true,
-             user_id: authData.user?.id
+             user_id: authData.user?.id,
+             empresa_id: defaultEmpresa.id
           });
 
         if (insertError) {
@@ -120,7 +128,8 @@ const Register = ({ onBackToLogin }) => {
              email_input: formData.email,
              zona_id_input: parseInt(formData.zonaId),
              telefono_input: formData.telefono,
-             user_id_input: authData.user?.id
+             user_id_input: authData.user?.id,
+             empresa_id_input: defaultEmpresa.id
            });
 
            if (rpcError) {
@@ -136,7 +145,8 @@ const Register = ({ onBackToLogin }) => {
             nombre: formData.nombre,
             email: formData.email,
             telefono: formData.telefono || null,
-            user_id: authData.user?.id
+            user_id: authData.user?.id,
+            empresa_id: defaultEmpresa.id
           })
 
         if (adminError) {

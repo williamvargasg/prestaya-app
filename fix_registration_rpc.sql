@@ -6,7 +6,8 @@ CREATE OR REPLACE FUNCTION public.registrar_cobrador(
     email_input TEXT,
     zona_id_input BIGINT,
     telefono_input TEXT,
-    user_id_input UUID
+    user_id_input UUID,
+    empresa_id_input BIGINT
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -19,7 +20,8 @@ BEGIN
         zona_id, 
         telefono, 
         user_id, 
-        active
+        active,
+        empresa_id
     )
     VALUES (
         nombre_input, 
@@ -27,7 +29,8 @@ BEGIN
         zona_id_input, 
         telefono_input, 
         user_id_input, 
-        true
+        true,
+        empresa_id_input
     );
 END;
 $$;
