@@ -14,11 +14,24 @@ export function useUserRole(user) {
       }
       setRoleLoading(true)
       const email = user.email.trim().toLowerCase()
-      // Busca primero admin
+      const userId = user.id
+      // Busca primero admin por user_id
       let { data: admins, error: errorAdmin } = await supabase
         .from('prestamistas')
+        .select('id')
+        .eq('user_id', userId)
+
+      if (!errorAdmin && admins && admins.length > 0) {
+        if (mounted) setRole('admin')
+        setRoleLoading(false)
+        return
+      }
+
+      // Fallback por email
+      ;({ data: admins, error: errorAdmin } = await supabase
+        .from('prestamistas')
         .select('email')
-        .ilike('email', email)
+        .ilike('email', email))
       if (!errorAdmin && admins && admins.length > 0) {
         if (mounted) setRole('admin')
         setRoleLoading(false)
@@ -27,9 +40,22 @@ export function useUserRole(user) {
       // Busca cobrador
       let { data: cobradores, error: errorCob } = await supabase
         .from('cobradores')
+        .select('id')
+        .eq('active', true)
+        .eq('user_id', userId)
+
+      if (!errorCob && cobradores && cobradores.length > 0) {
+        if (mounted) setRole('cobrador')
+        setRoleLoading(false)
+        return
+      }
+
+      // Fallback por email
+      ;({ data: cobradores, error: errorCob } = await supabase
+        .from('cobradores')
         .select('email')
         .eq('active', true)
-        .ilike('email', email)
+        .ilike('email', email))
 
       // Fallback para usuario de prueba (manejo de alias de correo)
       if ((!cobradores || cobradores.length === 0) && email === 'cobrador.prueba@prestaya.com') {

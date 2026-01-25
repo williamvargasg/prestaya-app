@@ -5,7 +5,7 @@
 SELECT * FROM zonas ORDER BY id;
 
 -- Si no hay zonas, crear una zona de prueba
-INSERT INTO zonas (nombre) 
+INSERT INTO zonas (nombre, empresa_id) 
 SELECT 'Zona Centro' 
 WHERE NOT EXISTS (SELECT 1 FROM zonas WHERE nombre = 'Zona Centro');
 
@@ -13,12 +13,13 @@ WHERE NOT EXISTS (SELECT 1 FROM zonas WHERE nombre = 'Zona Centro');
 SELECT id, nombre, email, active FROM cobradores ORDER BY id;
 
 -- Crear cobrador de prueba si no existe
-INSERT INTO cobradores (nombre, email, zona_id, active)
+INSERT INTO cobradores (nombre, email, zona_id, active, empresa_id)
 SELECT 
     'Cobrador Prueba',
     'cobrador.prueba@prestaya.com',
     (SELECT id FROM zonas WHERE nombre = 'Zona Centro' LIMIT 1),
-    true
+    true,
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 WHERE NOT EXISTS (
     SELECT 1 FROM cobradores 
     WHERE email = 'cobrador.prueba@prestaya.com'
@@ -36,26 +37,28 @@ LEFT JOIN zonas z ON c.zona_id = z.id
 ORDER BY c.id;
 
 -- Crear algunos deudores de prueba para el cobrador
-INSERT INTO deudores (nombre, cedula, telefono, whatsapp, email, cobrador_id)
+INSERT INTO deudores (nombre, cedula, telefono, whatsapp, email, cobrador_id, empresa_id)
 SELECT 
     'Juan Pérez',
     '12345678',
     '3001234567',
     '3001234567',
     'juan.perez@email.com',
-    (SELECT id FROM cobradores WHERE email = 'cobrador.prueba@prestaya.com')
+    (SELECT id FROM cobradores WHERE email = 'cobrador.prueba@prestaya.com'),
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 WHERE NOT EXISTS (
     SELECT 1 FROM deudores WHERE cedula = '12345678'
 );
 
-INSERT INTO deudores (nombre, cedula, telefono, whatsapp, email, cobrador_id)
+INSERT INTO deudores (nombre, cedula, telefono, whatsapp, email, cobrador_id, empresa_id)
 SELECT 
     'María García',
     '87654321',
     '3009876543',
     '3009876543',
     'maria.garcia@email.com',
-    (SELECT id FROM cobradores WHERE email = 'cobrador.prueba@prestaya.com')
+    (SELECT id FROM cobradores WHERE email = 'cobrador.prueba@prestaya.com'),
+    (SELECT id FROM empresas ORDER BY id LIMIT 1)
 WHERE NOT EXISTS (
     SELECT 1 FROM deudores WHERE cedula = '87654321'
 );

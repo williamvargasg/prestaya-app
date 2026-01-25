@@ -13,15 +13,17 @@ CREATE TABLE public.cobradores (
     zona_id BIGINT REFERENCES public.zonas(id),
     active BOOLEAN DEFAULT true,
     telefono TEXT,
-    user_id UUID REFERENCES auth.users(id)
+    user_id UUID REFERENCES auth.users(id),
+    empresa_id BIGINT REFERENCES public.empresas(id) DEFAULT public.current_empresa_id()
 );
 
 -- 3. Restaurar permisos
 GRANT ALL ON TABLE public.cobradores TO postgres, anon, authenticated, service_role;
 
 -- 4. Insertar cobrador de prueba inicial
-INSERT INTO public.cobradores (nombre, email, zona_id, active, telefono)
-SELECT 'Cobrador Prueba', 'cobrador.prueba@gmail.com', id, true, '0000000000'
+INSERT INTO public.cobradores (nombre, email, zona_id, active, telefono, empresa_id)
+SELECT 'Cobrador Prueba', 'cobrador.prueba@gmail.com', id, true, '0000000000',
+  (SELECT id FROM public.empresas ORDER BY id LIMIT 1)
 FROM public.zonas
 LIMIT 1;
 

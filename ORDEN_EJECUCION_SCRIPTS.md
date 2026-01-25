@@ -4,6 +4,15 @@ Para configurar correctamente el sistema de préstamos y evitar errores, ejecuta
 
 ## 1. Preparación de la Base de Datos
 
+### 1.0 Configuración base + multi-tenant (OBLIGATORIO)
+```sql
+-- Ejecutar: setup_database.sql
+```
+Este script:
+- Crea la tabla `empresas` y configura la lógica multi-tenant
+- Define parámetros de mora/multa por empresa y bloqueos automáticos
+- Agrega columnas `empresa_id` y políticas RLS
+
 ### 1.1 Corregir función problemática (IMPORTANTE - EJECUTAR PRIMERO)
 ```sql
 -- Ejecutar: corregir_funcion_verificar_pago.sql
